@@ -490,7 +490,10 @@ async function sbUploadImage(dataUri, index){
   var up = await supabaseClient.storage.from('etiquettes').upload(path, blob, {upsert:true, contentType:'image/jpeg'});
   if(up.error){ throw new Error(up.error.message || 'Échec de l\'envoi vers le bucket etiquettes'); }
   var pub = supabaseClient.storage.from('etiquettes').getPublicUrl(path);
-  return (pub.data && pub.data.publicUrl) ? pub.data.publicUrl : null;
+  var url = (pub.data && pub.data.publicUrl) ? pub.data.publicUrl : null;
+  // Ajoute un paramètre anti-cache : sans ça, une photo remplacée garde la même URL
+  // et le navigateur continue d'afficher l'ancienne image mise en cache.
+  return url ? (url + '?v=' + Date.now()) : null;
 }
 
 /* ---------------- Bottles (table Supabase "bottles") ----------------
