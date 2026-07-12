@@ -2048,8 +2048,9 @@ async function runAiLookup(){
     (knownBits.length? ' (informations déjà connues : '+knownBits.join(', ')+')':'') + '. '+
     'Réponds UNIQUEMENT avec un objet JSON valide (aucun texte avant/après, pas de balises markdown), avec exactement ces clés : '+
     'PRODUCTEUR, COULEUR_TYPE, PAYS, REGION, CEPAGES, APPELLATION, CLASSEMENT, BIO, GARDE (année en 4 chiffres ou vide), '+
+    'PRODUCTEUR, COULEUR_TYPE, PAYS, REGION, CEPAGES, APPELLATION, CLASSEMENT, BIO, GARDE (année en 4 chiffres ou vide), IMAGE_URL, '+
     'DESCRIPTION, ROBE, NEZ, PALAIS, PUISSANT (0-5), TANNIQUE (0-5), EPICE (0-5), COMPLEXE (0-5), FRUITE (0-5), ACIDITE (0-5), '+
-    'AUTRE, ACCORDS, AVIS (note sur 10 selon avis courants, nombre), IMAGE_URL. '+
+    'AUTRE, ACCORDS, AVIS (note sur 10 selon avis courants, nombre). '+
     'IMPORTANT — reste concis pour chaque champ texte (DESCRIPTION, ROBE, NEZ, PALAIS, ACCORDS) : 1 à 2 phrases courtes maximum chacun, jamais de longs paragraphes. '+
     'Pour IMAGE_URL : cherche cette bouteille sur des sites de vente de vin/bière/boissons en ligne (par exemple Nicolas, Millésima, Vinatis, iDealwine, Carrefour, La Belle Liste, ou tout autre caviste identifié via ta recherche), '+
     'et recopie l\'URL EXACTE de l\'image produit trouvée sur sa fiche. Ces URLs sont souvent longues, dynamiques ou encodées (pas forcément terminées par .jpg/.png) — c\'est normal, recopie-les telles quelles, caractère pour caractère, sans les modifier ni les reconstruire de mémoire. '+
