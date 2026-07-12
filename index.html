@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DENFLO 2.0 - Gestion de Cave</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --primary: #667eea;
+      --primary-dark: #764ba2;
+      --danger: #d32f2f;
+      --success: #4caf50;
+      --warning: #ff9800;
+      --light-gray: #f5f5f5;
+      --border: #e0e0e0;
+      --bordeaux: #722f37;
+      --rouge: #c1440e;
+      --rose: #e8949c;
+      --blanc: #f5f0e6;
+      --jaune: #f5e7a0;
+    }
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--light-gray); color: #333; }
+    
+    .auth-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); }
+    .auth-box { background: white; padding: 50px 40px; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); width: 100%; max-width: 450px; text-align: center; }
+    .auth-box h1 { font-size: 48px; margin-bottom: 10px; }
+    .auth-box p { color: #666; margin-bottom: 30px; font-size: 14px; }
+    .auth-box input { width: 100%; padding: 14px; margin: 12px 0; border: 1px solid var(--border); border-radius: 6px; font-size: 16px; }
+    .auth-box button { width: 100%; padding: 14px; background: var(--primary); color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 20px; transition: background 0.3s; }
+    .auth-box button:hover { background: var(--primary-dark); }
+    .auth-error { color: var(--danger); margin-top: 15px; font-size: 14px; }
+    
+    .main { display: none; }
+    .main.active { display: flex; width: 100vw; height: 100vh; }
+    
+    .sidebar { width: 260px; background: white; box-shadow: 2px 0 12px rgba(0,0,0,0.08); padding: 30px 20px; height: 100vh; overflow-y: auto; position: fixed; left: 0; top: 0; z-index: 100; }
+    .sidebar h2 { font-size: 24px; margin-bottom: 30px; }
+    .nav-btn { display: block; width: 100%; padding: 14px 16px; margin: 8px 0; background: transparent; border: none; border-left: 4px solid transparent; cursor: pointer; text-align: left; border-radius: 6px; font-size: 15px; font-weight: 500; transition: all 0.3s; color: #333; }
+    .nav-btn:hover { background: var(--light-gray); }
+    .nav-btn.active { background: var(--primary); color: white; border-left-color: white; }
+    .logout-btn { margin-top: 30px; width: 100%; padding: 12px; background: var(--danger); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    
+    .content { margin-left: 260px; padding: 30px 40px; overflow-y: auto; flex: 1; }
+    .content h1 { font-size: 32px; margin-bottom: 30px; color: #333; }
+    .content h2 { font-size: 24px; margin: 30px 0 20px 0; }
+    
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 40px; }
+    .stat-card { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid var(--primary); }
+    .stat-card h3 { color: #666; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .stat-card .value { font-size: 36px; font-weight: 700; color: var(--primary); }
+    
+    .quick-filters { background: white; padding: 20px; border-radius: 8px; margin-bottom: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .quick-filters button { padding: 10px 16px; margin-right: 10px; background: var(--light-gray); border: 2px solid transparent; border-radius: 20px; cursor: pointer; font-weight: 500; transition: all 0.3s; }
+    .quick-filters button.active { background: var(--primary); color: white; }
+    
+    .table-container { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 30px; overflow-x: auto; }
+    .table-container table { width: 100%; border-collapse: collapse; }
+    .table-container th { background: var(--primary); color: white; padding: 16px; text-align: left; font-weight: 600; font-size: 14px; white-space: nowrap; }
+    .table-container td { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .table-container tr:hover { background: var(--light-gray); }
+    .table-container tr:last-child td { border-bottom: none; }
+    
+    .btn { padding: 10px 16px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; transition: background 0.3s; }
+    .btn:hover { background: var(--primary-dark); }
+    .btn-small { padding: 6px 12px; font-size: 13px; }
+    .btn-danger { background: var(--danger); }
+    .btn-danger:hover { background: #b71c1c; }
+    
+    .filters { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; gap: 12px; flex-wrap: wrap; }
+    .filters input, .filters select { padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
+    .filters input { flex: 1; min-width: 200px; }
+    
+    .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 20px; }
+    .modal.active { display: flex; }
+    .modal-content { background: white; padding: 40px; border-radius: 12px; max-width: 700px; width: 100%; max-height: 90vh; overflow-y: auto; }
+    .modal-content h2 { margin-bottom: 25px; font-size: 28px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .form-group { margin-bottom: 20px; }
+    .form-group label { display: block; margin-bottom: 8px; font-weight: 500; font-size: 14px; }
+    .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; font-family: inherit; }
+    .form-group textarea { resize: vertical; min-height: 80px; }
+    .modal-actions { display: flex; gap: 12px; margin-top: 30px; }
+    .modal-actions button { flex: 1; }
+    .close-modal { float: right; font-size: 32px; cursor: pointer; color: #666; line-height: 1; }
+    
+    .color-badge { display: inline-block; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+    .badge-bordeaux { background: var(--bordeaux); color: white; }
+    .badge-rouge { background: var(--rouge); color: white; }
+    .badge-rose { background: var(--rose); color: white; }
+    .badge-blanc { background: var(--blanc); color: #333; border: 1px solid #ddd; }
+    .badge-jaune { background: var(--jaune); color: #333; }
+    
+    .loading { text-align: center; padding: 40px; }
+    .spinner { display: inline-block; width: 40px; height: 40px; border: 4px solid var(--light-gray); border-top: 4px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    
+    .toast { position: fixed; bottom: 20px; right: 20px; padding: 16px 24px; background: var(--success); color: white; border-radius: 6px; z-index: 2000; font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .toast.error { background: var(--danger); }
+    
+    .rating-input { display: flex; gap: 5px; }
+    .rating-input button { width: 40px; height: 40px; border: 2px solid var(--border); background: white; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.3s; }
+    .rating-input button.active { background: var(--primary); color: white; border-color: var(--primary); }
+    .rating-input button:hover { border-color: var(--primary); }
+    
+    @media (max-width: 768px) {
+      .sidebar { width: 200px; padding: 20px 15px; }
+      .content { margin-left: 200px; padding: 20px; }
+      .filters { flex-direction: column; }
+      .filters input { min-width: 100%; }
+      .stats { grid-template-columns: 1fr; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="authScreen" class="auth-screen">
+  <div class="auth-box">
+    <h1>🍾</h1>
+    <h1>DENFLO</h1>
+    <p>Gestion de Cave Personnelle</p>
+    <input type="password" id="passwordInput" placeholder="Mot de passe" autocomplete="off">
+    <button onclick="app.authenticate()">Se connecter</button>
+    <div id="authError" class="auth-error"></div>
+  </div>
+</div>
+
+<div id="mainApp" class="main">
+  <div class="sidebar">
+    <h2>🍾 DENFLO</h2>
+    <button class="nav-btn active" onclick="app.switchView('dashboard')">📊 Tableau de bord</button>
+    <button class="nav-btn" onclick="app.switchView('bottles')">🍷 Bouteilles</button>
+    <button class="nav-btn" onclick="app.switchView('locations')">📍 Emplacements</button>
+    <button class="nav-btn" onclick="app.switchView('lists')">⚙️ Référentiels</button>
+    <button class="logout-btn" onclick="app.logout()">Déconnexion</button>
+  </div>
+  
+  <div class="content">
+    <div id="dashboardView" class="view active">
+      <h1>Tableau de bord</h1>
+      <div class="stats">
+        <div class="stat-card"><h3>Total</h3><div class="value" id="totalBottles">-</div></div>
+        <div class="stat-card"><h3>En cave</h3><div class="value" id="inCave">-</div></div>
+        <div class="stat-card"><h3>À boire</h3><div class="value" id="toBuy">-</div></div>
+        <div class="stat-card"><h3>Frigo</h3><div class="value" id="inFridge">-</div></div>
+      </div>
+      
+      <h2>Filtres rapides</h2>
+      <div class="quick-filters">
+        <button onclick="app.loadDashboard('all')">📊 Tous</button>
+        <button onclick="app.loadDashboard('VIN')">🍷 Vins</button>
+        <button onclick="app.loadDashboard('BIERE')">🍺 Bières</button>
+        <button onclick="app.loadDashboard('CAVE')">🏠 En cave</button>
+      </div>
+      
+      <h2>Dernières bouteilles</h2>
+      <div id="recentBottles" class="table-container loading"><div class="spinner"></div></div>
+    </div>
+    
+    <div id="bottlesView" class="view" style="display:none;">
+      <h1>Bouteilles</h1>
+      <button class="btn" onclick="app.openBottleForm()" style="margin-bottom: 20px;">+ Ajouter une bouteille</button>
+      
+      <div class="filters">
+        <input type="text" id="searchInput" placeholder="Chercher..." onkeyup="app.filterBottles()">
+        <select id="typeFilter" onchange="app.filterBottles()"><option value="">Tous les types</option></select>
+        <select id="couleurFilter" onchange="app.filterBottles()"><option value="">Toutes les couleurs</option></select>
+        <select id="paysFilter" onchange="app.filterBottles()"><option value="">Tous les pays</option></select>
+        <select id="statutFilter" onchange="app.filterBottles()"><option value="">Tous les statuts</option></select>
+      </div>
+      
+      <div id="bottlesTable" class="table-container loading"><div class="spinner"></div></div>
+    </div>
+    
+    <div id="locationsView" class="view" style="display:none;">
+      <h1>Emplacements</h1>
+      <div id="locationsTable" class="table-container loading"><div class="spinner"></div></div>
+    </div>
+    
+    <div id="listsView" class="view" style="display:none;">
+      <h1>Référentiels</h1>
+      <div id="listsContent" style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);"></div>
+    </div>
+  </div>
+</div>
+
+<div id="modal" class="modal">
+  <div class="modal-content">
+    <span class="close-modal" onclick="app.closeModal()">&times;</span>
+    <div id="modalContent"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const app = {
+  SUPABASE_URL: 'https://vbojurjgljubvmpbwtqu.supabase.co',
+  SUPABASE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZib2p1cmpnbGp1YnZtcGJ3dHF1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM3OTE1MzMsImV4cCI6MjA5OTM2NzUzM30.4rIQX7_aCQ9m8_UH89qduuQjt80hDOOJYAGWTIqM-pE',
+  PASSWORD: 'denflo2026!',
+  
+  db: null,
+  bottles: [],
+  locations: [],
+  
+  init() {
+    if (localStorage.getItem('denflo-auth')) this.showMain();
+    else document.getElementById('passwordInput').focus();
+  },
+  
+  authenticate() {
+    if (document.getElementById('passwordInput').value === this.PASSWORD) {
+      localStorage.setItem('denflo-auth', 'true');
+      this.showMain();
+    } else {
+      document.getElementById('authError').innerText = '❌ Mot de passe incorrect';
+    }
+  },
+  
+  showMain() {
+    document.getElementById('authScreen').style.display = 'none';
+    document.getElementById('mainApp').classList.add('active');
+    this.initSupabase();
+    this.loadDashboard();
+  },
+  
+  initSupabase() {
+    const { createClient } = window.supabase;
+    this.db = createClient(this.SUPABASE_URL, this.SUPABASE_KEY);
+  },
+  
+  logout() {
+    if (confirm('Déconnexion ?')) {
+      localStorage.removeItem('denflo-auth');
+      location.reload();
+    }
+  },
+  
+  async loadDashboard(filter = 'all') {
+    const { data, error } = await this.db.from('bottles').select('*');
+    if (error) { this.showToast('Erreur: ' + error.message, 'error'); return; }
+    
+    this.bottles = data || [];
+    const inCave = this.bottles.filter(b => b.statut === 'CAVE').length;
+    const toBuy = this.bottles.filter(b => b.statut === 'A VENIR').length;
+    const inFridge = this.bottles.filter(b => b.statut === 'FRIGO').length;
+    
+    document.getElementById('totalBottles').innerText = this.bottles.length;
+    document.getElementById('inCave').innerText = inCave;
+    document.getElementById('toBuy').innerText = toBuy;
+    document.getElementById('inFridge').innerText = inFridge;
+    
+    let filtered = this.bottles;
+    if (filter === 'VIN') filtered = this.bottles.filter(b => b.type && b.type.includes('VIN'));
+    if (filter === 'BIERE') filtered = this.bottles.filter(b => b.type && b.type.includes('BIERE'));
+    if (filter === 'CAVE') filtered = this.bottles.filter(b => b.statut === 'CAVE');
+    
+    this.renderRecentBottles(filtered.slice(0, 15));
+  },
+  
+  renderRecentBottles(data) {
+    let html = '<table><tr><th>N°</th><th>Intitulé</th><th>Producteur</th><th>Région</th><th>Millésime</th><th>Statut</th><th>Actions</th></tr>';
+    data.forEach(b => {
+      html += `<tr>
+        <td><strong>${b.n || '-'}</strong></td>
+        <td>${b.intitule || '-'}</td>
+        <td>${b.producteur || '-'}</td>
+        <td>${b.region || '-'}</td>
+        <td>${b.millesime || '-'}</td>
+        <td><span class="color-badge">${b.statut}</span></td>
+        <td><button class="btn btn-small" onclick="app.editBottle(${b.id})">Voir</button></td>
+      </tr>`;
+    });
+    html += '</table>';
+    document.getElementById('recentBottles').innerHTML = html;
+  },
+  
+  async loadBottles() {
+    const { data, error } = await this.db.from('bottles').select('*').order('n');
+    if (error) { this.showToast('Erreur: ' + error.message, 'error'); return; }
+    
+    this.bottles = data || [];
+    this.populateFilters();
+    this.renderBottles(this.bottles);
+  },
+  
+  populateFilters() {
+    const types = [...new Set(this.bottles.map(b => b.type).filter(Boolean))];
+    const couleurs = [...new Set(this.bottles.map(b => b.couleur_type).filter(Boolean))];
+    const pays = [...new Set(this.bottles.map(b => b.pays).filter(Boolean))];
+    
+    document.getElementById('typeFilter').innerHTML = '<option value="">Tous les types</option>' + types.map(t => `<option value="${t}">${t}</option>`).join('');
+    document.getElementById('couleurFilter').innerHTML = '<option value="">Toutes les couleurs</option>' + couleurs.map(c => `<option value="${c}">${c}</option>`).join('');
+    document.getElementById('paysFilter').innerHTML = '<option value="">Tous les pays</option>' + pays.map(p => `<option value="${p}">${p}</option>`).join('');
+  },
+  
+  renderBottles(data) {
+    let html = '<table><tr><th>N°</th><th>Intitulé</th><th>Type</th><th>Producteur</th><th>Région</th><th>Mill.</th><th>Statut</th><th>Actions</th></tr>';
+    data.forEach(b => {
+      html += `<tr>
+        <td><strong>${b.n || '-'}</strong></td>
+        <td>${b.intitule || '-'}</td>
+        <td>${b.type || '-'}</td>
+        <td>${b.producteur || '-'}</td>
+        <td>${b.region || '-'}</td>
+        <td>${b.millesime || '-'}</td>
+        <td><span class="color-badge">${b.statut}</span></td>
+        <td><button class="btn btn-small" onclick="app.editBottle(${b.id})">Voir</button> <button class="btn btn-small btn-danger" onclick="app.deleteBottle(${b.id})">✕</button></td>
+      </tr>`;
+    });
+    html += '</table>';
+    document.getElementById('bottlesTable').innerHTML = html;
+  },
+  
+  filterBottles() {
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const type = document.getElementById('typeFilter').value;
+    const couleur = document.getElementById('couleurFilter').value;
+    const pays = document.getElementById('paysFilter').value;
+    const statut = document.getElementById('statutFilter').value;
+    
+    const filtered = this.bottles.filter(b => {
+      const matchSearch = !search || (b.intitule || '').toLowerCase().includes(search) || (b.producteur || '').toLowerCase().includes(search);
+      const matchType = !type || b.type === type;
+      const matchCouleur = !couleur || b.couleur_type === couleur;
+      const matchPays = !pays || b.pays === pays;
+      const matchStatut = !statut || b.statut === statut;
+      return matchSearch && matchType && matchCouleur && matchPays && matchStatut;
+    });
+    this.renderBottles(filtered);
+  },
+  
+  openBottleForm() {
+    document.getElementById('modalContent').innerHTML = `
+      <h2>Ajouter une bouteille</h2>
+      <div class="form-row">
+        <div class="form-group"><label>N°</label><input type="number" id="bottleN"></div>
+        <div class="form-group"><label>Intitulé *</label><input type="text" id="bottleIntitule" required></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Type</label><input type="text" id="bottleType" placeholder="VIN, BIERE..."></div>
+        <div class="form-group"><label>Couleur</label><input type="text" id="bottleCouleur" placeholder="Rouge, Blanc..."></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Producteur</label><input type="text" id="bottleProducteur"></div>
+        <div class="form-group"><label>Région</label><input type="text" id="bottleRegion"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Pays</label><input type="text" id="bottlePays"></div>
+        <div class="form-group"><label>Millésime</label><input type="number" id="bottleMillesime"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Appellation</label><input type="text" id="bottleAppellation"></div>
+        <div class="form-group"><label>Cépages</label><input type="text" id="bottleCepages"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Degrés</label><input type="number" id="bottleDegres" step="0.1"></div>
+        <div class="form-group"><label>Statut</label><select id="bottleStatut"><option value="CAVE">En cave</option><option value="FRIGO">Frigo</option><option value="BU">Bu</option><option value="A VENIR">À venir</option></select></div>
+      </div>
+      <div class="form-group"><label>Description</label><textarea id="bottleDescription"></textarea></div>
+      <div class="form-group"><label>Notes</label><textarea id="bottleNotes"></textarea></div>
+      <div class="modal-actions">
+        <button class="btn" onclick="app.saveBottle()">Enregistrer</button>
+        <button onclick="app.closeModal()">Annuler</button>
+      </div>
+    `;
+    document.getElementById('modal').classList.add('active');
+  },
+  
+  async saveBottle() {
+    const bottle = {
+      n: parseInt(document.getElementById('bottleN').value) || null,
+      intitule: document.getElementById('bottleIntitule').value,
+      type: document.getElementById('bottleType').value || null,
+      couleur_type: document.getElementById('bottleCouleur').value || null,
+      producteur: document.getElementById('bottleProducteur').value || null,
+      region: document.getElementById('bottleRegion').value || null,
+      pays: document.getElementById('bottlePays').value || null,
+      millesime: parseInt(document.getElementById('bottleMillesime').value) || null,
+      appellation: document.getElementById('bottleAppellation').value || null,
+      cepages: document.getElementById('bottleCepages').value || null,
+      degres: parseFloat(document.getElementById('bottleDegres').value) || null,
+      statut: document.getElementById('bottleStatut').value || 'CAVE',
+      description: document.getElementById('bottleDescription').value || null,
+      avis: document.getElementById('bottleNotes').value || null
+    };
+    
+    const { error } = await this.db.from('bottles').insert([bottle]);
+    if (error) this.showToast('Erreur: ' + error.message, 'error');
+    else {
+      this.showToast('Bouteille ajoutée!');
+      this.closeModal();
+      this.loadBottles();
+    }
+  },
+  
+  async editBottle(id) {
+    const b = this.bottles.find(x => x.id === id);
+    if (!b) return;
+    
+    document.getElementById('modalContent').innerHTML = `
+      <h2>Éditer bouteille ${b.n}</h2>
+      <div class="form-row">
+        <div class="form-group"><label>Intitulé</label><input type="text" id="bottleIntitule" value="${b.intitule || ''}"></div>
+        <div class="form-group"><label>Type</label><input type="text" id="bottleType" value="${b.type || ''}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Couleur</label><input type="text" id="bottleCouleur" value="${b.couleur_type || ''}"></div>
+        <div class="form-group"><label>Producteur</label><input type="text" id="bottleProducteur" value="${b.producteur || ''}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Région</label><input type="text" id="bottleRegion" value="${b.region || ''}"></div>
+        <div class="form-group"><label>Pays</label><input type="text" id="bottlePays" value="${b.pays || ''}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Millésime</label><input type="number" id="bottleMillesime" value="${b.millesime || ''}"></div>
+        <div class="form-group"><label>Degrés</label><input type="number" id="bottleDegres" step="0.1" value="${b.degres || ''}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Appellation</label><input type="text" id="bottleAppellation" value="${b.appellation || ''}"></div>
+        <div class="form-group"><label>Cépages</label><input type="text" id="bottleCepages" value="${b.cepages || ''}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Statut</label><select id="bottleStatut"><option value="CAVE" ${b.statut === 'CAVE' ? 'selected' : ''}>En cave</option><option value="FRIGO" ${b.statut === 'FRIGO' ? 'selected' : ''}>Frigo</option><option value="BU" ${b.statut === 'BU' ? 'selected' : ''}>Bu</option><option value="A VENIR" ${b.statut === 'A VENIR' ? 'selected' : ''}>À venir</option></select></div>
+      </div>
+      <div class="form-group"><label>Description</label><textarea id="bottleDescription">${b.description || ''}</textarea></div>
+      <div class="form-group"><label>Notes</label><textarea id="bottleNotes">${b.avis || ''}</textarea></div>
+      <div class="modal-actions">
+        <button class="btn" onclick="app.updateBottle(${id})">Enregistrer</button>
+        <button onclick="app.closeModal()">Annuler</button>
+      </div>
+    `;
+    document.getElementById('modal').classList.add('active');
+  },
+  
+  async updateBottle(id) {
+    const updates = {
+      intitule: document.getElementById('bottleIntitule').value,
+      type: document.getElementById('bottleType').value || null,
+      couleur_type: document.getElementById('bottleCouleur').value || null,
+      producteur: document.getElementById('bottleProducteur').value || null,
+      region: document.getElementById('bottleRegion').value || null,
+      pays: document.getElementById('bottlePays').value || null,
+      millesime: parseInt(document.getElementById('bottleMillesime').value) || null,
+      appellation: document.getElementById('bottleAppellation').value || null,
+      cepages: document.getElementById('bottleCepages').value || null,
+      degres: parseFloat(document.getElementById('bottleDegres').value) || null,
+      statut: document.getElementById('bottleStatut').value,
+      description: document.getElementById('bottleDescription').value || null,
+      avis: document.getElementById('bottleNotes').value || null
+    };
+    
+    const { error } = await this.db.from('bottles').update(updates).eq('id', id);
+    if (error) this.showToast('Erreur: ' + error.message, 'error');
+    else {
+      this.showToast('Bouteille mise à jour!');
+      this.closeModal();
+      this.loadBottles();
+    }
+  },
+  
+  async deleteBottle(id) {
+    if (!confirm('Supprimer ?')) return;
+    const { error } = await this.db.from('bottles').delete().eq('id', id);
+    if (error) this.showToast('Erreur: ' + error.message, 'error');
+    else {
+      this.showToast('Bouteille supprimée!');
+      this.loadBottles();
+    }
+  },
+  
+  async loadLocations() {
+    const { data, error } = await this.db.from('locations').select('*');
+    if (error) { this.showToast('Erreur: ' + error.message, 'error'); return; }
+    
+    this.locations = data || [];
+    let html = '<table><tr><th>Code</th><th>Emplacement</th><th>Statut</th></tr>';
+    this.locations.forEach(l => {
+      html += `<tr><td>${l.code}</td><td>${l.emplacement}</td><td>${l.statut_emp}</td></tr>`;
+    });
+    html += '</table>';
+    document.getElementById('locationsTable').innerHTML = html;
+  },
+  
+  async loadLists() {
+    const { data, error } = await this.db.from('lists').select('*');
+    if (error) { this.showToast('Erreur: ' + error.message, 'error'); return; }
+    
+    let html = '<p>Référentiels disponibles :</p><ul>';
+    (data || []).forEach(item => {
+      html += `<li><strong>${item.key}</strong></li>`;
+    });
+    html += '</ul>';
+    document.getElementById('listsContent').innerHTML = html;
+  },
+  
+  switchView(view) {
+    document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    
+    document.getElementById(view + 'View').style.display = 'block';
+    event.target.classList.add('active');
+    
+    if (view === 'bottles') this.loadBottles();
+    else if (view === 'locations') this.loadLocations();
+    else if (view === 'lists') this.loadLists();
+  },
+  
+  closeModal() {
+    document.getElementById('modal').classList.remove('active');
+  },
+  
+  showToast(msg, type = 'success') {
+    const toast = document.getElementById('toast');
+    toast.innerText = msg;
+    toast.className = 'toast ' + (type === 'error' ? 'error' : '');
+    setTimeout(() => toast.innerText = '', 3000);
+  }
+};
+
+window.onload = () => app.init();
+document.getElementById('passwordInput').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') app.authenticate();
+});
+</script>
+
+</body>
+</html>
