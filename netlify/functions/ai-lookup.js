@@ -48,7 +48,7 @@ exports.handler = async function (event) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-5',
-        max_tokens: 1500,
+        max_tokens: 4096,
         messages: [{ role: 'user', content: prompt }],
         tools: [{ type: 'web_search_20250305', name: 'web_search' }]
       })
@@ -64,9 +64,13 @@ exports.handler = async function (event) {
       };
     }
 
-    const text = (data.content || [])
+    let text = (data.content || [])
       .map(function (c) { return c.type === 'text' ? c.text : ''; })
       .join('\n');
+
+    // Retire d'éventuelles balises de citation (<cite index="...">...</cite>) qui peuvent
+    // apparaître avec l'outil de recherche web et casser le JSON (guillemets internes).
+    text = text.replace(/<cite[^>]*>/g, '').replace(/<\/cite>/g, '');
 
     return { statusCode: 200, headers, body: JSON.stringify({ text: text }) };
   } catch (e) {
