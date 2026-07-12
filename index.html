@@ -429,6 +429,70 @@ if(!window.storage){
   };
 }
 
+/* ---------------- Supabase (référentiels + emplacements uniquement) ----------------
+   Les bouteilles restent stockées localement (window.storage / localStorage), comme avant.
+   Les listes ("lists") et les emplacements ("locations") sont désormais lues/écrites
+   directement dans Supabase pour être partagées entre tous les appareils. */
+var SUPABASE_URL = 'https://vbojurjgljubvmpbwtqu.supabase.co';
+var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZib2p1cmpnbGp1YnZtcGJ3dHF1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM3OTE1MzMsImV4cCI6MjA5OTM2NzUzM30.4rIQX7_aCQ9m8_UH89qduuQjt80hDOOJYAGWTIqM-pE';
+var supabaseClient = (window.supabase && window.supabase.createClient)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+async function sbLoadLists(){
+  if(!supabaseClient) return null;
+  try{
+    var res = await supabaseClient.from('lists').select('key,values');
+    if(res.error){ console.error('Supabase (lists) lecture:', res.error); return null; }
+    if(!res.data || !res.data.length) return null;
+    var obj = {};
+    res.data.forEach(function(row){ obj[row.key] = row.values; });
+    return obj;
+  }catch(e){ console.error('Supabase (lists) lecture:', e); return null; }
+}
+async function sbPersistLists(){
+  if(!supabaseClient) return false;
+  try{
+    var rows = Object.keys(STATE.lists).map(function(k){ return {key:k, values:STATE.lists[k]}; });
+    var res = await supabaseClient.from('lists').upsert(rows, {onConflict:'key'});
+    if(res.error){ console.error('Supabase (lists) écriture:', res.error); toast('Échec de synchronisation des référentiels','err'); return false; }
+    return true;
+  }catch(e){ console.error('Supabase (lists) écriture:', e); toast('Échec de synchronisation des référentiels','err'); return false; }
+}
+async function sbLoadLocations(){
+  if(!supabaseClient) return null;
+  try{
+    var res = await supabaseClient.from('locations').select('id,code,emplacement,statut_emp');
+    if(res.error){ console.error('Supabase (locations) lecture:', res.error); return null; }
+    return (res.data||[]).map(function(r){ return {ID:r.id, CODE:r.code, EMPLACEMENT:r.emplacement, STATUT_EMP:r.statut_emp}; });
+  }catch(e){ console.error('Supabase (locations) lecture:', e); return null; }
+}
+async function sbPersistLocations(){
+  if(!supabaseClient) return false;
+  try{
+    var del = await supabaseClient.from('locations').delete().gte('id',0);
+    if(del.error){ console.error('Supabase (locations) écriture:', del.error); toast('Échec de synchronisation des emplacements','err'); return false; }
+    if(STATE.locations.length){
+      var rows = STATE.locations.map(function(l){ return {id:l.ID, code:l.CODE, emplacement:l.EMPLACEMENT, statut_emp:l.STATUT_EMP}; });
+      var ins = await supabaseClient.from('locations').insert(rows);
+      if(ins.error){ console.error('Supabase (locations) écriture:', ins.error); toast('Échec de synchronisation des emplacements','err'); return false; }
+    }
+    return true;
+  }catch(e){ console.error('Supabase (locations) écriture:', e); toast('Échec de synchronisation des emplacements','err'); return false; }
+}
+
+/* Envoie une image (data URI) dans le bucket Supabase Storage "etiquettes" et renvoie son URL publique */
+async function sbUploadImage(dataUri, index){
+  if(!supabaseClient) throw new Error('Supabase non configuré');
+  var resp = await fetch(dataUri);
+  var blob = await resp.blob();
+  var path = 'bottle-'+index+'.jpg';
+  var up = await supabaseClient.storage.from('etiquettes').upload(path, blob, {upsert:true, contentType:'image/jpeg'});
+  if(up.error){ throw new Error(up.error.message || 'Échec de l\'envoi vers le bucket etiquettes'); }
+  var pub = supabaseClient.storage.from('etiquettes').getPublicUrl(path);
+  return (pub.data && pub.data.publicUrl) ? pub.data.publicUrl : null;
+}
+
 /* ---------------- Constants ---------------- */
 var BOTTLE_FIELDS = ['N','EMPLACEMENT','TYPE','DATE_ACHAT','SITE_ACHAT','TARIF','INTITULE','PRODUCTEUR',
   'COULEUR_TYPE','PAYS','REGION','CEPAGES','APPELLATION','CLASSEMENT','BIO','MILLESIME','GARDE','DEGRES',
@@ -652,20 +716,22 @@ async function loadBottlesChunked(){
     var chunk = pj(await sGet('bottles-chunk-'+i), null);
     if(chunk) all = all.concat(chunk);
   }
-  // Réinitialiser les champs images (ne sont pas stockés en localStorage)
-  all.forEach(function(b){ 
-    if(!b.ETIQUETTE) b.ETIQUETTE = null;
-    if(b.HAS_IMG===undefined) b.HAS_IMG = false;
+  // Les URL d'image (Supabase Storage) sont conservées ; le base64 brut (non encore migré) est exclu
+  // pour économiser localStorage — il reste alors en mémoire seulement et se perd au refresh.
+  all.forEach(function(b){
+    if(b.ETIQUETTE && b.ETIQUETTE.indexOf('data:')===0){ /* base64 non persistant, laissé tel quel en mémoire */ }
+    else if(!b.ETIQUETTE){ b.ETIQUETTE = null; b.HAS_IMG = !!b.HAS_IMG; }
   });
   return all;
 }
 async function saveBottlesChunked(bottlesArray){
-  // Exclure ETIQUETTE de la sauvegarde pour économiser localStorage (~80% de la taille)
-  // Les images restent en mémoire dans STATE.bottles, perdent au refresh (acceptable)
+  // On exclut uniquement les images encore en base64 brut (non envoyées vers Supabase Storage) ;
+  // les URL d'image (courtes, hébergées dans le bucket "etiquettes") sont conservées normalement.
   var bottlesToSave = bottlesArray.map(function(b){
     var copy = {};
     Object.keys(b).forEach(function(k){
-      if(k !== 'ETIQUETTE' && k !== 'HAS_IMG') copy[k] = b[k];
+      if(k === 'ETIQUETTE' && b.ETIQUETTE && b.ETIQUETTE.indexOf('data:')===0) return;
+      copy[k] = b[k];
     });
     return copy;
   });
@@ -695,16 +761,45 @@ async function deleteAllBottleChunks(){
    INITIAL SEED
    ============================================================ */
 async function ensureSeeded(){
-  var existing = await loadBottlesChunked();
-  if(existing){
-    STATE.bottles = existing;
-    STATE.locations = pj(await sGet('locations') || '[]', []);
-    STATE.lists = pj(await sGet('lists') || 'null', null) || JSON.parse(JSON.stringify(DEFAULT_LISTS_SHAPE));
-    await migrateLocationIds();
-    if(ensureColorMap()){ await persistLists(); }
+  var existingBottles = await loadBottlesChunked();
+  var isFirstRun = !existingBottles;
+  if(existingBottles){ STATE.bottles = existingBottles; }
+
+  /* Listes de référence : Supabase en priorité, sinon reprise de l'ancien cache local
+     (migré automatiquement vers Supabase), sinon les données d'origine du fichier. */
+  setLoading('Chargement des référentiels…',20);
+  var sbLists = await sbLoadLists();
+  if(sbLists){
+    STATE.lists = sbLists;
+  } else if(isFirstRun){
+    STATE.lists = pj(document.getElementById('seed-lists').textContent, {});
+    await sbPersistLists();
+  } else {
+    var localLists = pj(await sGet('lists') || 'null', null);
+    STATE.lists = localLists || JSON.parse(JSON.stringify(DEFAULT_LISTS_SHAPE));
+    await sbPersistLists();
+  }
+
+  /* Emplacements : même logique */
+  setLoading('Chargement des emplacements…',30);
+  var sbLocs = await sbLoadLocations();
+  if(sbLocs && sbLocs.length){
+    STATE.locations = sbLocs;
+  } else if(isFirstRun){
+    STATE.locations = pj(document.getElementById('seed-locations').textContent, []);
+    if(STATE.locations.length){ await sbPersistLocations(); }
+  } else {
+    var localLocs = pj(await sGet('locations') || '[]', []);
+    STATE.locations = localLocs;
+    if(STATE.locations.length){ await sbPersistLocations(); }
+  }
+
+  if(isFirstRun){
+    await runSeed();
     return;
   }
-  await runSeed();
+  await migrateLocationIds();
+  if(ensureColorMap()){ await persistLists(); }
 }
 
 /* Répare les données enregistrées avant l'introduction de l'identifiant unique d'emplacement (ID) */
@@ -728,11 +823,9 @@ async function migrateLocationIds(){
   await persistBottles();
 }
 
-async function runSeed(isReset){
-  setLoading('Import des données initiales…',10);
+async function runSeed(){
+  setLoading('Import des données initiales…',50);
   var rawBottles = pj(document.getElementById('seed-bottles').textContent, []);
-  var rawLocations = pj(document.getElementById('seed-locations').textContent, []);
-  var rawLists = pj(document.getElementById('seed-lists').textContent, {});
 
   var bottles = rawBottles.map(function(b){
     var rec={};
@@ -743,28 +836,42 @@ async function runSeed(isReset){
     return rec;
   });
 
-  setLoading('Enregistrement des bouteilles…',40);
+  setLoading('Enregistrement des bouteilles…',70);
   await saveBottlesChunked(bottles);
-  setLoading('Import des emplacements…',80);
-  await sSet('locations', j(rawLocations));
-  setLoading('Import des référentiels…',92);
-  await sSet('lists', j(rawLists));
-  if(!isReset){ await sSet('auth-password','denflo'); }
+  await sSet('auth-password','denflo');
 
   STATE.bottles = bottles;
-  STATE.locations = rawLocations;
-  STATE.lists = rawLists;
   setLoading('Prêt.',100);
 }
 
 async function persistBottles(){
   await saveBottlesChunked(STATE.bottles);
 }
+
+/* Migre les images encore stockées en base64 (non envoyées vers Supabase Storage) vers le bucket "etiquettes" */
+async function migrateExistingImages(onProgress){
+  var toMigrate = STATE.bottles.filter(function(b){ return b.ETIQUETTE && b.ETIQUETTE.indexOf('data:')===0; });
+  var done=0, failed=0;
+  for(var i=0;i<toMigrate.length;i++){
+    var b = toMigrate[i];
+    try{
+      var url = await sbUploadImage(b.ETIQUETTE, b.INDEX);
+      if(url){ b.ETIQUETTE = url; b.HAS_IMG = true; done++; }
+      else { failed++; }
+    }catch(e){
+      console.error('Migration image échouée pour bouteille', b.INDEX, e);
+      failed++;
+    }
+    if(onProgress) onProgress(i+1, toMigrate.length);
+  }
+  if(done>0){ await persistBottles(); }
+  return {total:toMigrate.length, done:done, failed:failed};
+}
 async function persistLocations(){
-  await sSet('locations', j(STATE.locations));
+  await sbPersistLocations();
 }
 async function persistLists(){
-  await sSet('lists', j(STATE.lists));
+  await sbPersistLists();
 }
 
 async function resetToOriginalData(){
@@ -772,8 +879,12 @@ async function resetToOriginalData(){
   await sDelete('locations');
   await sDelete('lists');
   await sDelete('meta-next-index');
-  STATE.bottles=[]; STATE.locations=[]; STATE.lists=JSON.parse(JSON.stringify(DEFAULT_LISTS_SHAPE));
-  await runSeed(true);
+  STATE.bottles=[];
+  STATE.lists = pj(document.getElementById('seed-lists').textContent, {});
+  STATE.locations = pj(document.getElementById('seed-locations').textContent, []);
+  await sbPersistLists();
+  await sbPersistLocations();
+  await runSeed();
 }
 
 function nextIndex(){
@@ -796,7 +907,7 @@ window.DENFLO = {
   escapeHtml:escapeHtml, fmtMoney:fmtMoney, fmtDate:fmtDate, fmtDegres:fmtDegres, uid:uid, sortFr:sortFr, normZone:normZone, nextLocId:nextLocId,
   getPassword:getPassword, checkLogin:checkLogin, ensureSeeded:ensureSeeded,
   persistBottles:persistBottles, persistLocations:persistLocations, persistLists:persistLists,
-  resetToOriginalData:resetToOriginalData,
+  resetToOriginalData:resetToOriginalData, sbUploadImage:sbUploadImage, migrateExistingImages:migrateExistingImages,
   nextIndex:nextIndex, nextNForType:nextNForType, colorGroupForType:colorGroupForType, ensureColorMap:ensureColorMap,
   QUICK_CATEGORIES:QUICK_CATEGORIES, matchesQuickCategory:matchesQuickCategory,
   BOTTLE_FIELDS:BOTTLE_FIELDS, RATING_FIELDS:RATING_FIELDS, STATUTS:STATUTS, TYPES_BASE:TYPES_BASE
@@ -1717,8 +1828,6 @@ async function saveForm(){
     return;
   }
 
-  d.ETIQUETTE = currentForm.imageDataUri || null;
-  d.HAS_IMG = !!currentForm.imageDataUri;
   delete d.__pendingLocId;
   delete d.__pendingFreeText;
   var noLocationStatuts=['BU','FRIGO','A VENIR'];
@@ -1804,6 +1913,22 @@ async function saveForm(){
 
     Object.assign(existing,d);
     d=existing;
+  }
+
+  if(currentForm.imageDataUri && currentForm.imageDataUri.indexOf('data:')===0){
+    try{
+      var uploadedUrl = await D.sbUploadImage(currentForm.imageDataUri, d.INDEX);
+      d.ETIQUETTE = uploadedUrl || currentForm.imageDataUri;
+      d.HAS_IMG = true;
+    }catch(e){
+      console.error('Échec envoi photo:', e);
+      D.toast('Échec de l\'envoi de la photo vers Supabase (elle restera temporaire, non enregistrée)','err');
+      d.ETIQUETTE = currentForm.imageDataUri;
+      d.HAS_IMG = true;
+    }
+  } else {
+    d.ETIQUETTE = currentForm.imageDataUri || null;
+    d.HAS_IMG = !!currentForm.imageDataUri;
   }
 
   if(locationsChanged){ await D.persistLocations(); }
@@ -2318,7 +2443,8 @@ function renderLists(root){
       '<h3>Données</h3>'+
       '<p class="muted" style="font-size:12.5px;margin:-4px 0 14px;">Recharge les bouteilles, emplacements et référentiels intégrés dans ce fichier. <b>Toutes vos modifications (ajouts, éditions, suppressions) seront perdues</b> et remplacées par les données d\'origine du fichier Excel.</p>'+
       '<button class="btn btn-gold" id="btn-import-images">Importer images depuis JSON</button>'+
-      '<button class="btn btn-danger" id="btn-reset-data">Réinitialiser les données depuis le fichier d\'origine</button>'+
+      '<button class="btn btn-gold" id="btn-migrate-images" style="margin-left:8px;">Envoyer les photos vers Supabase</button>'+
+      '<button class="btn btn-danger" id="btn-reset-data" style="margin-left:8px;">Réinitialiser les données depuis le fichier d\'origine</button>'+
     '</div>';
 
   var grid=document.getElementById('ref-grid');
@@ -2345,6 +2471,26 @@ function renderLists(root){
       input.accept='.json';
       input.onchange=function(e){ window.DENFLO_UI.handleImportImages(e.target.files[0]); };
       input.click();
+    };
+  }
+
+  var migrateImagesBtn=document.getElementById('btn-migrate-images');
+  if(migrateImagesBtn){
+    migrateImagesBtn.onclick=async function(){
+      var pending = STATE.bottles.filter(function(b){ return b.ETIQUETTE && b.ETIQUETTE.indexOf('data:')===0; }).length;
+      if(!pending){ D.toast('Aucune photo en attente d\'envoi','ok'); return; }
+      migrateImagesBtn.disabled=true;
+      var origText=migrateImagesBtn.textContent;
+      var res = await D.migrateExistingImages(function(done,total){
+        migrateImagesBtn.textContent='Envoi… '+done+'/'+total;
+      });
+      migrateImagesBtn.disabled=false;
+      migrateImagesBtn.textContent=origText;
+      if(res.failed>0){
+        D.toast(res.done+' photo(s) envoyée(s), '+res.failed+' échec(s) — vérifiez le bucket "etiquettes"','err');
+      } else {
+        D.toast(res.done+' photo(s) envoyée(s) vers Supabase','ok');
+      }
     };
   }
 
