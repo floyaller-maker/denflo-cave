@@ -493,6 +493,76 @@ async function sbUploadImage(dataUri, index){
   return (pub.data && pub.data.publicUrl) ? pub.data.publicUrl : null;
 }
 
+/* ---------------- Bottles (table Supabase "bottles") ----------------
+   Les bouteilles sont désormais lues/écrites directement dans Supabase,
+   pour être partagées entre tous les appareils (plus de dépendance au
+   stockage local du navigateur). */
+function bottleToDbRow(b){
+  return {
+    index: b.INDEX, n: (typeof b.N==='number'? b.N : (b.N? parseInt(b.N,10): null)),
+    emplacement: b.EMPLACEMENT||null, type: b.TYPE||null,
+    date_achat: b.DATE_ACHAT||null, site_achat: b.SITE_ACHAT||null,
+    tarif: (b.TARIF===''||b.TARIF===undefined)? null : b.TARIF,
+    intitule: b.INTITULE||null, producteur: b.PRODUCTEUR||null,
+    couleur_type: b.COULEUR_TYPE||null, pays: b.PAYS||null, region: b.REGION||null,
+    cepages: b.CEPAGES||null, appellation: b.APPELLATION||null, classement: b.CLASSEMENT||null,
+    bio: b.BIO||null, millesime: (b.MILLESIME===''||b.MILLESIME===undefined)? null : b.MILLESIME,
+    garde: (b.GARDE===null||b.GARDE===undefined)? null : String(b.GARDE),
+    degres: (b.DEGRES===''||b.DEGRES===undefined)? null : b.DEGRES,
+    description: b.DESCRIPTION||null, robe: b.ROBE||null, nez: b.NEZ||null, palais: b.PALAIS||null,
+    puissant: nz(b.PUISSANT), tannique: nz(b.TANNIQUE), epice: nz(b.EPICE), complexe: nz(b.COMPLEXE),
+    fruite: nz(b.FRUITE), acidite: nz(b.ACIDITE), autre: b.AUTRE||null, accords: b.ACCORDS||null,
+    avis: nz(b.AVIS), etiquette_url: b.ETIQUETTE||null, has_img: !!b.HAS_IMG, statut: b.STATUT||null,
+    loc_id: (b.LOC_ID===undefined)? null : b.LOC_ID, loc_code_label: b.LOC_CODE_LABEL||null
+  };
+}
+function nz(v){ return (v===''||v===undefined||v===null)? null : v; }
+function dbRowToBottle(r){
+  return {
+    INDEX: r.index, N: r.n, EMPLACEMENT: r.emplacement, TYPE: r.type,
+    DATE_ACHAT: r.date_achat, SITE_ACHAT: r.site_achat, TARIF: r.tarif,
+    INTITULE: r.intitule, PRODUCTEUR: r.producteur, COULEUR_TYPE: r.couleur_type,
+    PAYS: r.pays, REGION: r.region, CEPAGES: r.cepages, APPELLATION: r.appellation,
+    CLASSEMENT: r.classement, BIO: r.bio, MILLESIME: r.millesime, GARDE: r.garde,
+    DEGRES: r.degres, DESCRIPTION: r.description, ROBE: r.robe, NEZ: r.nez, PALAIS: r.palais,
+    PUISSANT: r.puissant, TANNIQUE: r.tannique, EPICE: r.epice, COMPLEXE: r.complexe,
+    FRUITE: r.fruite, ACIDITE: r.acidite, AUTRE: r.autre, ACCORDS: r.accords, AVIS: r.avis,
+    ETIQUETTE: r.etiquette_url, HAS_IMG: !!r.has_img, STATUT: r.statut,
+    LOC_ID: (r.loc_id===undefined? null: r.loc_id), LOC_CODE_LABEL: (r.loc_code_label===undefined? null: r.loc_code_label)
+  };
+}
+async function sbLoadBottles(){
+  if(!supabaseClient) return null;
+  try{
+    var all=[]; var from=0; var pageSize=1000;
+    while(true){
+      var res = await supabaseClient.from('bottles').select('*').order('index',{ascending:true}).range(from, from+pageSize-1);
+      if(res.error){ console.error('Supabase (bottles) lecture:', res.error); return null; }
+      var rows = res.data||[];
+      all = all.concat(rows);
+      if(rows.length < pageSize) break;
+      from += pageSize;
+    }
+    if(!all.length) return null;
+    return all.map(dbRowToBottle);
+  }catch(e){ console.error('Supabase (bottles) lecture:', e); return null; }
+}
+var BOTTLES_UPSERT_CHUNK = 100;
+async function sbPersistBottles(bottlesArray){
+  if(!supabaseClient) throw new Error('Supabase non configuré');
+  var rows = bottlesArray.map(bottleToDbRow);
+  var chunks = chunkArray(rows, BOTTLES_UPSERT_CHUNK);
+  for(var i=0;i<chunks.length;i++){
+    var res = await supabaseClient.from('bottles').upsert(chunks[i], {onConflict:'index'});
+    if(res.error){ throw new Error(res.error.message || 'Échec de l\'enregistrement des bouteilles (bloc '+i+')'); }
+  }
+}
+async function sbDeleteAllBottles(){
+  if(!supabaseClient) throw new Error('Supabase non configuré');
+  var res = await supabaseClient.from('bottles').delete().gte('index',0);
+  if(res.error){ throw new Error(res.error.message || 'Échec de la suppression des bouteilles'); }
+}
+
 /* ---------------- Constants ---------------- */
 var BOTTLE_FIELDS = ['N','EMPLACEMENT','TYPE','DATE_ACHAT','SITE_ACHAT','TARIF','INTITULE','PRODUCTEUR',
   'COULEUR_TYPE','PAYS','REGION','CEPAGES','APPELLATION','CLASSEMENT','BIO','MILLESIME','GARDE','DEGRES',
@@ -761,7 +831,8 @@ async function deleteAllBottleChunks(){
    INITIAL SEED
    ============================================================ */
 async function ensureSeeded(){
-  var existingBottles = await loadBottlesChunked();
+  setLoading('Chargement des bouteilles…',10);
+  var existingBottles = await sbLoadBottles();
   var isFirstRun = !existingBottles;
   if(existingBottles){ STATE.bottles = existingBottles; }
 
@@ -837,7 +908,7 @@ async function runSeed(){
   });
 
   setLoading('Enregistrement des bouteilles…',70);
-  await saveBottlesChunked(bottles);
+  await sbPersistBottles(bottles);
   await sSet('auth-password','denflo');
 
   STATE.bottles = bottles;
@@ -845,7 +916,7 @@ async function runSeed(){
 }
 
 async function persistBottles(){
-  await saveBottlesChunked(STATE.bottles);
+  await sbPersistBottles(STATE.bottles);
 }
 
 /* Migre les images encore stockées en base64 (non envoyées vers Supabase Storage) vers le bucket "etiquettes" */
@@ -875,7 +946,7 @@ async function persistLists(){
 }
 
 async function resetToOriginalData(){
-  await deleteAllBottleChunks();
+  await sbDeleteAllBottles();
   await sDelete('locations');
   await sDelete('lists');
   await sDelete('meta-next-index');
@@ -1987,26 +2058,21 @@ async function runAiLookup(){
     'Si une information est introuvable, laisse une chaîne vide ou 0.';
 
   try{
-    var resp = await fetch('https://api.anthropic.com/v1/messages',{
+    var resp = await fetch('/.netlify/functions/ai-lookup',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model:'claude-sonnet-5',
-        max_tokens:1500,
-        messages:[{role:'user',content:prompt}],
-        tools:[{type:'web_search_20250305',name:'web_search'}]
-      })
+      body:JSON.stringify({ prompt: prompt })
     });
 
     if(!resp.ok){
       var errText='';
-      try{ var errJson=await resp.json(); errText=(errJson&&errJson.error&&errJson.error.message)||JSON.stringify(errJson); }
+      try{ var errJson=await resp.json(); errText=(errJson&&errJson.error)||JSON.stringify(errJson); }
       catch(e2){ try{ errText=await resp.text(); }catch(e3){ errText=''; } }
       throw new Error('HTTP '+resp.status+(errText?' — '+errText:''));
     }
 
     var data=await resp.json();
-    var text=(data.content||[]).map(function(c){return c.type==='text'?c.text:'';}).join('\n');
+    var text = data.text || '';
     if(!text.trim()){
       throw new Error('Réponse vide (peut-être bloquée par un filtre de contenu ou une limite d\'appels).');
     }
