@@ -2044,7 +2044,7 @@ async function runAiLookup(){
   if(currentForm.data.DEGRES) knownBits.push('degré : '+currentForm.data.DEGRES+'°');
   if(currentForm.data.PRODUCTEUR) knownBits.push('producteur : '+currentForm.data.PRODUCTEUR);
 
-  var prompt = 'Tu es un sommelier expert. Recherche des informations fiables sur internet à propos de la boisson suivante : "'+intitule+'"'+
+  var prompt = 'Tu es un sommelier expert. Fais au maximum 2 à 3 recherches web ciblées (pas plus) sur la boisson suivante, puis réponds directement : "'+intitule+'"'+
     (knownBits.length? ' (informations déjà connues : '+knownBits.join(', ')+')':'') + '. '+
     'Réponds UNIQUEMENT avec un objet JSON valide (aucun texte avant/après, pas de balises markdown), avec exactement ces clés : '+
     'PRODUCTEUR, COULEUR_TYPE, PAYS, REGION, CEPAGES, APPELLATION, CLASSEMENT, BIO, GARDE (année en 4 chiffres ou vide), '+
