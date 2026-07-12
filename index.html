@@ -1842,10 +1842,50 @@ async function wireZoneCombo(){
   };
 }
 
+function refreshLabelPreview(){
+  var intituleEl=document.getElementById('fld-INTITULE');
+  var producteurEl=document.getElementById('fld-PRODUCTEUR');
+  var millesimeEl=document.getElementById('fld-MILLESIME');
+  if(intituleEl) currentForm.data.INTITULE = intituleEl.value;
+  if(producteurEl) currentForm.data.PRODUCTEUR = producteurEl.value;
+  if(millesimeEl) currentForm.data.MILLESIME = millesimeEl.value ? parseFloat(millesimeEl.value) : null;
+  var d=currentForm.data;
+
+  var titleEl=document.querySelector('.label-card .label-title');
+  if(titleEl) titleEl.textContent = d.INTITULE || 'Sans titre';
+  var subEl=document.querySelector('.label-card .label-sub');
+  if(subEl) subEl.textContent = (d.PRODUCTEUR||'') + (d.MILLESIME? ' · '+d.MILLESIME : '');
+
+  var card=document.querySelector('.label-card');
+  if(!card || currentForm.imageDataUri) return;
+  var query=[d.INTITULE, d.PRODUCTEUR, d.MILLESIME].filter(Boolean).join(' ').trim();
+  var suggest=card.querySelector('#photo-search-suggest');
+  if(query){
+    var url='https://www.google.com/search?tbm=isch&q='+encodeURIComponent(query);
+    if(suggest){
+      var a=suggest.querySelector('a');
+      if(a) a.href=url;
+    } else {
+      var box=document.createElement('div');
+      box.className='ai-image-suggest'; box.id='photo-search-suggest';
+      box.innerHTML='<a href="'+url+'" target="_blank" rel="noopener">🔎 Chercher une photo sur Google Images</a>'+
+        '<div class="hint">Ouvrez le lien, trouvez la photo de l\'étiquette, enregistrez-la sur votre appareil, puis importez-la avec le bouton ci-dessus.</div>';
+      var labelN=card.querySelector('.label-n');
+      if(labelN) card.insertBefore(box, labelN); else card.appendChild(box);
+    }
+  } else if(suggest){
+    suggest.remove();
+  }
+}
 function wireBodyFields(){
   ['COULEUR_TYPE','PAYS','REGION','APPELLATION','CLASSEMENT','BIO'].forEach(wireCombo);
   wireZoneCombo();
   D.RATING_FIELDS.forEach(wireRating);
+
+  ['fld-INTITULE','fld-PRODUCTEUR','fld-MILLESIME'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.addEventListener('input', refreshLabelPreview);
+  });
 
   var statutSel=document.getElementById('fld-STATUT');
   var empWrap=document.getElementById('emplacement-wrap');
