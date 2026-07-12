@@ -2145,19 +2145,24 @@ async function applyAiResult(r){
   document.getElementById('form-body').innerHTML=bodyHtml();
   wireBodyFields();
 
-  if(r.IMAGE_URL){
-    var card=document.querySelector('.label-card');
-    if(card){
-      var oldSuggest=card.querySelector('.ai-image-suggest');
-      if(oldSuggest) oldSuggest.remove();
-      var suggestBox=document.createElement('div');
-      suggestBox.className='ai-image-suggest';
-      var label = currentForm.imageDataUri ? '🔗 Autre photo trouvée — essayer d\'ouvrir' : '🔗 Photo suggérée — essayer d\'ouvrir';
-      suggestBox.innerHTML='<a href="'+D.escapeHtml(r.IMAGE_URL)+'" target="_blank" rel="noopener">'+label+'</a>'+
-        '<div class="hint">⚠️ Lien non garanti (il arrive que l\'IA se trompe d\'adresse) — s\'il ne mène à rien, cherchez le nom de la bouteille sur un caviste en ligne (Nicolas, Vinatis, Millésima…) ou une recherche d\'image classique. Si ça fonctionne : enregistrez l\'image puis importez-la avec le bouton ci-dessus'+(currentForm.imageDataUri?' (elle remplacera la photo actuelle)':'')+'.</div>';
-      var labelN=card.querySelector('.label-n');
-      if(labelN) card.insertBefore(suggestBox, labelN); else card.appendChild(suggestBox);
+  var card=document.querySelector('.label-card');
+  if(card){
+    var oldSuggest=card.querySelector('.ai-image-suggest');
+    if(oldSuggest) oldSuggest.remove();
+
+    var query = [d.INTITULE, d.PRODUCTEUR, d.MILLESIME].filter(Boolean).join(' ');
+    var googleImagesUrl = 'https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(query);
+    var links = '<a href="'+googleImagesUrl+'" target="_blank" rel="noopener">🔎 Chercher une photo sur Google Images</a>';
+    if(r.IMAGE_URL){
+      links += '<br><a href="'+D.escapeHtml(r.IMAGE_URL)+'" target="_blank" rel="noopener" style="margin-top:4px;display:inline-block;">🔗 Lien suggéré par l\'IA (moins fiable)</a>';
     }
+
+    var suggestBox=document.createElement('div');
+    suggestBox.className='ai-image-suggest';
+    suggestBox.innerHTML=links+
+      '<div class="hint">Ouvrez le lien, trouvez la photo de l\'étiquette, enregistrez-la sur votre appareil, puis importez-la avec le bouton ci-dessus'+(currentForm.imageDataUri?' (elle remplacera la photo actuelle)':'')+'.</div>';
+    var labelN=card.querySelector('.label-n');
+    if(labelN) card.insertBefore(suggestBox, labelN); else card.appendChild(suggestBox);
   }
 }
 
