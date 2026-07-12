@@ -2050,12 +2050,14 @@ async function runAiLookup(){
     'PRODUCTEUR, COULEUR_TYPE, PAYS, REGION, CEPAGES, APPELLATION, CLASSEMENT, BIO, GARDE (année en 4 chiffres ou vide), '+
     'DESCRIPTION, ROBE, NEZ, PALAIS, PUISSANT (0-5), TANNIQUE (0-5), EPICE (0-5), COMPLEXE (0-5), FRUITE (0-5), ACIDITE (0-5), '+
     'AUTRE, ACCORDS, AVIS (note sur 10 selon avis courants, nombre), IMAGE_URL. '+
+    'IMPORTANT — reste concis pour chaque champ texte (DESCRIPTION, ROBE, NEZ, PALAIS, ACCORDS) : 1 à 2 phrases courtes maximum chacun, jamais de longs paragraphes. '+
     'Pour IMAGE_URL : cherche cette bouteille sur des sites de vente de vin/bière/boissons en ligne (par exemple Nicolas, Millésima, Vinatis, iDealwine, Carrefour, La Belle Liste, ou tout autre caviste identifié via ta recherche), '+
     'et recopie l\'URL EXACTE de l\'image produit trouvée sur sa fiche. Ces URLs sont souvent longues, dynamiques ou encodées (pas forcément terminées par .jpg/.png) — c\'est normal, recopie-les telles quelles, caractère pour caractère, sans les modifier ni les reconstruire de mémoire. '+
     'Ne laisse ce champ vide que si ta recherche n\'a vraiment renvoyé aucune image exploitable. '+
     'Si des informations sont déjà connues (indiquées ci-dessus), respecte-les telles quelles plutôt que de les redéterminer. '+
     'Les textes doivent être rédigés en français, avec tes propres mots (jamais de citation exacte de tes sources). '+
     'N\'utilise AUCUNE balise ou marqueur de citation (pas de <cite>, pas de crochets de référence, pas de guillemets imbriqués) : uniquement du texte brut dans les valeurs. '+
+    'Termine TOUJOURS l\'objet JSON proprement (accolade fermante finale) : mieux vaut des champs plus courts qu\'une réponse tronquée. '+
     'Si une information est introuvable, laisse une chaîne vide ou 0.';
 
   try{
@@ -2078,14 +2080,28 @@ async function runAiLookup(){
       throw new Error('Réponse vide (peut-être bloquée par un filtre de contenu ou une limite d\'appels).');
     }
     var clean=text.replace(/```json|```/g,'').trim();
-    var start=clean.indexOf('{'), end=clean.lastIndexOf('}');
-    if(start>-1 && end>-1) clean=clean.slice(start,end+1);
+    var start=clean.indexOf('{');
+    if(start>-1) clean=clean.slice(start);
+    var end=clean.lastIndexOf('}');
+    if(end>-1) clean=clean.slice(0,end+1);
+    // sinon : réponse tronquée avant toute accolade fermante, laissée telle quelle pour la réparation ci-dessous
     var parsed;
     try{
       parsed=JSON.parse(clean);
     }catch(parseErr){
-      console.error('Réponse IA non-JSON:', text);
-      throw new Error('La réponse reçue n\'était pas au format attendu (voir la console pour le détail).');
+      // Réponse probablement tronquée (limite de longueur atteinte) : on tente une réparation
+      // en coupant au dernier champ complet, puis en refermant l'objet proprement.
+      try{
+        var repaired = clean.replace(/,\s*"[A-Z_]*"?\s*:?\s*"?[^,}]*$/,'');
+        var openBraces=(repaired.match(/{/g)||[]).length;
+        var closeBraces=(repaired.match(/}/g)||[]).length;
+        for(var i=0;i<openBraces-closeBraces;i++){ repaired+='}'; }
+        parsed=JSON.parse(repaired);
+        D.toast('Réponse partiellement récupérée (certains champs peuvent être vides) — vérifiez la fiche','ok');
+      }catch(repairErr){
+        console.error('Réponse IA non-JSON:', text);
+        throw new Error('La réponse reçue n\'était pas au format attendu (voir la console pour le détail).');
+      }
     }
     await applyAiResult(parsed);
     D.toast('Fiche complétée automatiquement — vérifiez et ajustez si besoin','ok');
