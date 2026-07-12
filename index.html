@@ -1147,8 +1147,16 @@ function uniqueVals(field){
   return D.sortFr(Object.keys(s));
 }
 
+/* Comme uniqueVals, mais inclut aussi les valeurs référentielles définies (même sans bouteille associée) */
+function filterOptionsFor(field){
+  var s={};
+  (STATE.lists[field]||[]).forEach(function(v){ if(v) s[v]=1; });
+  STATE.bottles.forEach(function(b){ if(b[field]) s[b[field]]=1; });
+  return D.sortFr(Object.keys(s));
+}
+
 function couleurOptionsForType(type){
-  var vals=uniqueVals('COULEUR_TYPE');
+  var vals=filterOptionsFor('COULEUR_TYPE');
   if(!type) return vals;
   var group=D.colorGroupForType(type);
   var map=STATE.lists.COULEUR_TYPE_MAP||{};
@@ -1163,7 +1171,7 @@ function renderFilterBar(){
     '<div class="filter-item"><label>Type</label><select id="f-type">'+opt(D.sortFr(['VIN','BIERE','JUS','VIN SANS ALCOOL']),f.type,true)+'</select></div>'+
     '<div class="filter-item"><label>Statut</label><select id="f-statut">'+opt(['','CAVE','BU','FRIGO','A VENIR'],f.statut,true)+'</select></div>'+
     '<div class="filter-item"><label>Couleur / type</label><select id="f-couleur">'+opt(couleurOptionsForType(f.type),f.couleur,true)+'</select></div>'+
-    '<div class="filter-item"><label>Pays</label><select id="f-pays">'+opt(uniqueVals('PAYS'),f.pays,true)+'</select></div>'+
+    '<div class="filter-item"><label>Pays</label><select id="f-pays">'+opt(filterOptionsFor('PAYS'),f.pays,true)+'</select></div>'+
     '<button class="btn btn-ghost btn-sm filter-reset" id="f-reset">Réinitialiser</button>';
 
   document.getElementById('f-search').oninput=debounce(function(e){ f.search=e.target.value; renderTable(); },200);
