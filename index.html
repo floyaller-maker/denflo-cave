@@ -224,7 +224,8 @@ table.cellar thead th .sort-ind{opacity:.5;font-size:10px;margin-left:3px;}
 table.cellar .sticky-col{position:sticky;background:var(--surface);z-index:1;box-shadow:2px 0 6px rgba(0,0,0,.25);}
 table.cellar thead th.sticky-col{background:var(--surface-2);z-index:4;}
 table.cellar tbody tr:hover .sticky-col{background:var(--surface-2);}
-table.cellar .sticky-thumb{left:0;width:118px;}
+table.cellar .sticky-thumb{left:0;width:118px;z-index:2;}
+table.cellar .sticky-thumb:has(.thumb:hover){z-index:50;}
 table.cellar .sticky-n{left:118px;}
 table.cellar tbody td{padding:9px 10px;border-bottom:1px solid var(--border-soft);vertical-align:middle;}
 table.cellar tbody tr:hover{background:var(--surface-2);}
