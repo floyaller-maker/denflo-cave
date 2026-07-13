@@ -229,8 +229,10 @@ table.cellar .sticky-n{left:118px;}
 table.cellar tbody td{padding:9px 10px;border-bottom:1px solid var(--border-soft);vertical-align:middle;}
 table.cellar tbody tr:hover{background:var(--surface-2);}
 table.cellar tbody tr:last-child td{border-bottom:none;}
-.thumb{width:100px;height:30px;border-radius:6px;object-fit:cover;background:var(--surface-3);border:1px solid var(--border);}
+.thumb{width:100px;height:30px;border-radius:6px;object-fit:cover;background:var(--surface-3);border:1px solid var(--border);cursor:zoom-in;transition:transform .15s ease,box-shadow .15s ease;position:relative;}
+.thumb:hover{transform:scale(3.4);transform-origin:left center;z-index:20;box-shadow:0 8px 28px rgba(0,0,0,.55);position:relative;}
 .thumb-empty{width:100px;height:30px;border-radius:6px;background:var(--surface-3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--text-faint);font-size:14px;}
+.thumb-lightbox-img{display:block;max-width:min(80vw,520px);max-height:80vh;border-radius:10px;margin:0 auto;}
 .pastille{width:11px;height:11px;border-radius:50%;display:inline-block;flex-shrink:0;box-shadow:0 0 0 2px rgba(0,0,0,.25) inset;}
 .n-badge{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-weight:600;}
 .status-chip{
@@ -565,6 +567,11 @@ async function sbDeleteAllBottles(){
   var res = await supabaseClient.from('bottles').delete().gte('index',0);
   if(res.error){ throw new Error(res.error.message || 'Échec de la suppression des bouteilles'); }
 }
+async function sbDeleteBottle(index){
+  if(!supabaseClient) throw new Error('Supabase non configuré');
+  var res = await supabaseClient.from('bottles').delete().eq('index', index);
+  if(res.error){ throw new Error(res.error.message || 'Échec de la suppression de la bouteille'); }
+}
 
 /* ---------------- Constants ---------------- */
 var BOTTLE_FIELDS = ['N','EMPLACEMENT','TYPE','DATE_ACHAT','SITE_ACHAT','TARIF','INTITULE','PRODUCTEUR',
@@ -767,10 +774,29 @@ function ensureColorMap(){
 }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
+async function sbGetSetting(key){
+  if(!supabaseClient) return null;
+  try{
+    var res = await supabaseClient.from('app_settings').select('value').eq('key',key).maybeSingle();
+    if(res.error) return null;
+    return (res.data && res.data.value!==undefined) ? res.data.value : null;
+  }catch(e){ return null; }
+}
+async function sbSetSetting(key, value){
+  if(!supabaseClient) throw new Error('Supabase non configuré');
+  var res = await supabaseClient.from('app_settings').upsert({key:key, value:value}, {onConflict:'key'});
+  if(res.error) throw new Error(res.error.message || 'Échec de l\'enregistrement du réglage');
+}
+
 /* ---------------- Auth ---------------- */
 async function getPassword(){
-  var v = await sGet('auth-password');
-  return v || 'denflo';
+  var v = await sbGetSetting('auth-password');
+  if(v) return v;
+  // Compatibilité : reprend un éventuel mot de passe encore stocké localement sur cet appareil
+  // (avant la bascule vers un stockage partagé) et le migre vers Supabase.
+  var legacy = await sGet('auth-password');
+  if(legacy){ try{ await sbSetSetting('auth-password', legacy); }catch(e){} return legacy; }
+  return 'denflo';
 }
 async function checkLogin(pw){
   var real = await getPassword();
@@ -912,7 +938,7 @@ async function runSeed(){
 
   setLoading('Enregistrement des bouteilles…',70);
   await sbPersistBottles(bottles);
-  await sSet('auth-password','denflo');
+  await sbSetSetting('auth-password','denflo');
 
   STATE.bottles = bottles;
   setLoading('Prêt.',100);
@@ -981,7 +1007,7 @@ window.DENFLO = {
   escapeHtml:escapeHtml, fmtMoney:fmtMoney, fmtDate:fmtDate, fmtDegres:fmtDegres, uid:uid, sortFr:sortFr, normZone:normZone, nextLocId:nextLocId,
   getPassword:getPassword, checkLogin:checkLogin, ensureSeeded:ensureSeeded,
   persistBottles:persistBottles, persistLocations:persistLocations, persistLists:persistLists,
-  resetToOriginalData:resetToOriginalData, sbUploadImage:sbUploadImage, migrateExistingImages:migrateExistingImages,
+  resetToOriginalData:resetToOriginalData, sbUploadImage:sbUploadImage, migrateExistingImages:migrateExistingImages, sbDeleteBottle:sbDeleteBottle, sbSetSetting:sbSetSetting, sbGetSetting:sbGetSetting,
   nextIndex:nextIndex, nextNForType:nextNForType, colorGroupForType:colorGroupForType, ensureColorMap:ensureColorMap,
   QUICK_CATEGORIES:QUICK_CATEGORIES, matchesQuickCategory:matchesQuickCategory,
   BOTTLE_FIELDS:BOTTLE_FIELDS, RATING_FIELDS:RATING_FIELDS, STATUTS:STATUTS, TYPES_BASE:TYPES_BASE
@@ -1025,7 +1051,6 @@ function renderLogin(err){
       '<div class="field"><label>Mot de passe</label><input type="password" id="pw-input" autofocus placeholder="••••••••"></div>'+
       '<div class="login-error">'+(err||'')+'</div>'+
       '<button class="btn btn-gold" id="login-btn" style="width:100%;justify-content:center;">Entrer dans la cave</button>'+
-      '<div class="login-hint">Mot de passe par défaut : <b>denflo</b> — modifiable dans Référentiels &rarr; Sécurité.</div>'+
     '</div>';
   var input=document.getElementById('pw-input');
   document.getElementById('login-btn').onclick=doLogin;
@@ -1186,8 +1211,13 @@ function renderStats(){
   var avgAvis = avisVals.length? (avisVals.reduce(function(a,c){return a+c;},0)/avisVals.length) : null;
   var frigoCount = b.filter(function(x){return x.STATUT==='FRIGO';}).length;
   var buCount = b.filter(function(x){return x.STATUT==='BU';}).length;
-  var locFree = STATE.locations.length;
-  var totalLoc = locFree + b.filter(function(x){return x.LOC_ID;}).length;
+  // Capacité totale = emplacements encore dans le pool "libre" + ceux déjà liés formellement à une bouteille (LOC_ID).
+  // Reste stable dans le temps, y compris pour les bouteilles importées historiquement.
+  var totalLoc = STATE.locations.length + b.filter(function(x){return x.LOC_ID;}).length;
+  // Occupation réelle = toute bouteille en cave avec un emplacement renseigné, qu'elle soit
+  // formellement liée (LOC_ID) ou héritée de l'import initial (simple texte EMPLACEMENT).
+  var occupiedReal = b.filter(function(x){return x.STATUT==='CAVE' && x.EMPLACEMENT && String(x.EMPLACEMENT).trim()!=='';}).length;
+  var locFree = Math.max(0, totalLoc - occupiedReal);
 
   el.innerHTML =
     statCard(caveCount,'En cave','var(--ok)', b.length? (caveCount/b.length*100):0)+
@@ -1358,6 +1388,8 @@ function renderTable(){
 
   Array.prototype.forEach.call(body.querySelectorAll('tr[data-index]'),function(tr){
     var idx=parseInt(tr.getAttribute('data-index'),10);
+    var thumbImg=tr.querySelector('.thumb');
+    if(thumbImg){ thumbImg.onclick=function(){ window.DENFLO_UI.showImageLightbox(thumbImg.src); }; }
     tr.querySelector('[data-act="view"]').onclick=function(){ window.DENFLO_UI.openBottleForm(idx,'view'); };
     tr.querySelector('[data-act="edit"]').onclick=function(){ window.DENFLO_UI.openBottleForm(idx,'edit'); };
     tr.querySelector('[data-act="dup"]').onclick=function(){ window.DENFLO_UI.duplicateBottle(idx); };
@@ -1417,6 +1449,14 @@ function closeModal(){
   if(m) m.remove();
 }
 
+function showImageLightbox(src){
+  var back=showModal('<img class="thumb-lightbox-img" src="'+src+'" alt="Étiquette">',true);
+  back.querySelector('.modal').style.background='transparent';
+  back.querySelector('.modal').style.boxShadow='none';
+  back.querySelector('.modal').style.padding='0';
+}
+window.DENFLO_UI.showImageLightbox = showImageLightbox;
+
 /* ---------------- Row quick actions ---------------- */
 async function setStatut(index,statut){
   var b=STATE.bottles.find(function(x){return x.INDEX===index;});
@@ -1462,7 +1502,7 @@ function confirmDeleteBottle(index){
       STATE.locations.push({ID:b.LOC_ID, CODE:b.LOC_CODE_LABEL, EMPLACEMENT:b.EMPLACEMENT, STATUT_EMP:'VIDE'});
       await D.persistLocations();
     }
-    await D.persistBottles();
+    await D.sbDeleteBottle(index);
     closeModal();
     window.DENFLO_UI.refreshDashboard();
     D.toast('Bouteille supprimée','ok');
@@ -1628,7 +1668,8 @@ async function photoInputHandler(e){
   var dataUri=await resizeImageFile(f);
   currentForm.imageDataUri=dataUri;
   document.querySelector('.label-card').innerHTML=labelCardHtml();
-  wireForm();
+  var photoInput=document.getElementById('photo-input');
+  if(photoInput) photoInput.onchange=photoInputHandler;
 }
 
 function wireForm(){
@@ -2598,7 +2639,7 @@ function renderLists(root){
     var p2=document.getElementById('new-pw-2').value;
     if(!p1){ D.toast('Saisissez un nouveau mot de passe','err'); return; }
     if(p1!==p2){ D.toast('Les mots de passe ne correspondent pas','err'); return; }
-    await D.sSet('auth-password',p1);
+    await D.sbSetSetting('auth-password',p1);
     D.toast('Mot de passe mis à jour','ok');
     document.getElementById('new-pw').value='';
     document.getElementById('new-pw-2').value='';
