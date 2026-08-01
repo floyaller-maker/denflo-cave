@@ -94,7 +94,7 @@ input,select,textarea{font-family:inherit;}
 .btn-danger:hover{background:rgba(182,80,92,.12);}
 .btn-sm{padding:6px 10px;font-size:12px;border-radius:7px;}
 .btn-icon{padding:7px;border-radius:7px;}
-table.cellar .btn-icon{font-size:26px;padding:9px;line-height:1;font-weight:400;}
+table.cellar .btn-icon{font-size:22px;padding:8px;line-height:1;font-weight:400;}
 .btn:disabled{opacity:.45;cursor:not-allowed;}
 
 /* ---------- Login ---------- */
@@ -1037,7 +1037,7 @@ window.DENFLO = {
   escapeHtml:escapeHtml, fmtMoney:fmtMoney, fmtDate:fmtDate, fmtDegres:fmtDegres, uid:uid, sortFr:sortFr, normZone:normZone, nextLocId:nextLocId,
   getPassword:getPassword, checkLogin:checkLogin, ensureSeeded:ensureSeeded,
   persistBottles:persistBottles, persistLocations:persistLocations, persistLists:persistLists,
-  resetToOriginalData:resetToOriginalData, sbUploadImage:sbUploadImage, migrateExistingImages:migrateExistingImages, sbDeleteBottle:sbDeleteBottle, sbSetSetting:sbSetSetting, sbGetSetting:sbGetSetting, sbLoadBottles:sbLoadBottles,
+  resetToOriginalData:resetToOriginalData, sbUploadImage:sbUploadImage, migrateExistingImages:migrateExistingImages, sbDeleteBottle:sbDeleteBottle, sbSetSetting:sbSetSetting, sbGetSetting:sbGetSetting, sbLoadBottles:sbLoadBottles, sbLoadLocations:sbLoadLocations,
   nextIndex:nextIndex, nextNForType:nextNForType, colorGroupForType:colorGroupForType, ensureColorMap:ensureColorMap,
   QUICK_CATEGORIES:QUICK_CATEGORIES, matchesQuickCategory:matchesQuickCategory,
   BOTTLE_FIELDS:BOTTLE_FIELDS, RATING_FIELDS:RATING_FIELDS, STATUTS:STATUTS, TYPES_BASE:TYPES_BASE,
@@ -1223,6 +1223,8 @@ function renderDashboard(root){
     try{
       var fresh = await D.sbLoadBottles();
       if(fresh){ STATE.bottles = fresh; }
+      var freshLocs = await D.sbLoadLocations();
+      if(freshLocs){ STATE.locations = freshLocs; }
       window.DENFLO_UI.refreshDashboard();
       D.toast('Données à jour','ok');
     }catch(e){
@@ -1259,13 +1261,11 @@ function renderStats(){
   var avgAvis = avisVals.length? (avisVals.reduce(function(a,c){return a+c;},0)/avisVals.length) : null;
   var frigoCount = b.filter(function(x){return x.STATUT==='FRIGO';}).length;
   var buCount = b.filter(function(x){return x.STATUT==='BU';}).length;
-  // Capacité totale = emplacements encore dans le pool "libre" + ceux déjà liés formellement à une bouteille (LOC_ID).
-  // Reste stable dans le temps, y compris pour les bouteilles importées historiquement.
-  var totalLoc = STATE.locations.length + b.filter(function(x){return x.LOC_ID;}).length;
-  // Occupation réelle = toute bouteille en cave avec un emplacement renseigné, qu'elle soit
-  // formellement liée (LOC_ID) ou héritée de l'import initial (simple texte EMPLACEMENT).
-  var occupiedReal = b.filter(function(x){return x.STATUT==='CAVE' && x.EMPLACEMENT && String(x.EMPLACEMENT).trim()!=='';}).length;
-  var locFree = Math.max(0, totalLoc - occupiedReal);
+  // Emplacements libres = exactement ce qui est enregistré comme libre dans la table "locations".
+  // (Le nombre affiché correspond toujours à : select count(*) from locations;)
+  var locFree = STATE.locations.length;
+  var occupiedTracked = b.filter(function(x){return x.LOC_ID;}).length;
+  var totalLoc = locFree + occupiedTracked;
 
   el.innerHTML =
     statCard(caveCount,'En cave','var(--ok)', b.length? (caveCount/b.length*100):0)+
