@@ -214,6 +214,8 @@ main.view{flex:1;padding:26px 30px 60px;max-width:1500px;width:100%;margin:0 aut
   overflow:auto;max-height:calc(100vh - 330px);min-height:280px;position:relative;
 }
 table.cellar{width:100%;border-collapse:collapse;font-size:13px;min-width:1300px;}
+table.cellar.loc-table{min-width:0;width:auto;max-width:100%;table-layout:auto;}
+table.cellar.loc-table th, table.cellar.loc-table td{white-space:nowrap;width:auto;}
 table.cellar thead th{
   position:sticky;top:0;background:var(--surface-2);color:var(--text-faint);
   text-align:left;padding:10px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;
@@ -363,11 +365,17 @@ table.cellar tbody tr:last-child td{border-bottom:none;}
 .loc-select-wrap{display:flex;gap:8px;}
 .badge-count{background:var(--surface-3);border-radius:20px;padding:1px 8px;font-size:11px;color:var(--text-faint);}
 
+.label-card{ z-index:10; }
+
 @media (max-width:760px){
   .topbar{padding:10px 14px;gap:10px;flex-wrap:wrap;}
   nav.tabs{order:3;width:100%;overflow-x:auto;}
   main.view{padding:16px 12px 50px;}
   .page-head{flex-direction:column;align-items:flex-start;}
+  .label-card{
+    max-height:33vh; overflow-y:auto; top:8px;
+  }
+  .label-photo{aspect-ratio:auto;height:80px;}
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -582,6 +590,26 @@ var BOTTLE_FIELDS = ['N','EMPLACEMENT','TYPE','DATE_ACHAT','SITE_ACHAT','TARIF',
 
 var RATING_FIELDS = ['PUISSANT','TANNIQUE','EPICE','COMPLEXE','FRUITE','ACIDITE'];
 var STATUTS = ['CAVE','BU','FRIGO','A VENIR'];
+
+var BIO_OPTIONS = [
+  {value:'NON_BIO', label:'Non bio', color:'#6b6560', text:'—'},
+  {value:'AB', label:'AB — Agriculture Biologique', color:'#2f7d32', text:'AB'},
+  {value:'EUROFEUILLE', label:'Eurofeuille (Bio Européen)', color:'#3a8f4f', text:'EU'},
+  {value:'DEMETER', label:'Demeter (biodynamie)', color:'#7a4fae', text:'DE'},
+  {value:'BIODYVIN', label:'Biodyvin (biodynamie)', color:'#9b3fa0', text:'BD'},
+  {value:'HVE', label:'HVE — Haute Valeur Environnementale', color:'#4f7d3a', text:'HVE'},
+  {value:'RAISONNEE', label:'Agriculture raisonnée', color:'#8a7a3a', text:'AR'}
+];
+function bioOption(v){ return BIO_OPTIONS.find(function(o){return o.value===v;}); }
+function bioBadgeHtml(v, size){
+  var o=bioOption(v);
+  if(!o || o.value==='NON_BIO') return '';
+  var s=size||18;
+  return '<span class="bio-badge" title="'+escapeHtml(o.label)+'" '+
+    'style="display:inline-flex;align-items:center;justify-content:center;height:'+s+'px;padding:0 6px;border-radius:5px;'+
+    'background:'+o.color+';color:#fff;font-size:'+Math.round(s*0.55)+'px;font-weight:700;letter-spacing:.3px;line-height:1;white-space:nowrap;">'+
+    escapeHtml(o.text)+'</span>';
+}
 var TYPES_BASE = ['VIN','BIERE','JUS','VIN SANS ALCOOL'];
 
 var DEFAULT_LISTS_SHAPE = {TYPE:[],COULEUR_TYPE:[],PAYS:[],REGION:[],APPELLATION:[],CLASSEMENT:[],SITE_ACHAT:[],BIO:[]};
@@ -732,7 +760,7 @@ function fmtDate(v){
 function fmtDegres(v){
   if(v===null||v===undefined||v==='') return '';
   var n=parseFloat(v); if(isNaN(n)) return '';
-  return n+'°';
+  return n.toFixed(1).replace('.',',')+'°';
 }
 function sortFr(arr){
   return (arr||[]).slice().sort(function(a,b){ return String(a).localeCompare(String(b),'fr',{sensitivity:'base'}); });
@@ -1008,10 +1036,11 @@ window.DENFLO = {
   escapeHtml:escapeHtml, fmtMoney:fmtMoney, fmtDate:fmtDate, fmtDegres:fmtDegres, uid:uid, sortFr:sortFr, normZone:normZone, nextLocId:nextLocId,
   getPassword:getPassword, checkLogin:checkLogin, ensureSeeded:ensureSeeded,
   persistBottles:persistBottles, persistLocations:persistLocations, persistLists:persistLists,
-  resetToOriginalData:resetToOriginalData, sbUploadImage:sbUploadImage, migrateExistingImages:migrateExistingImages, sbDeleteBottle:sbDeleteBottle, sbSetSetting:sbSetSetting, sbGetSetting:sbGetSetting,
+  resetToOriginalData:resetToOriginalData, sbUploadImage:sbUploadImage, migrateExistingImages:migrateExistingImages, sbDeleteBottle:sbDeleteBottle, sbSetSetting:sbSetSetting, sbGetSetting:sbGetSetting, sbLoadBottles:sbLoadBottles,
   nextIndex:nextIndex, nextNForType:nextNForType, colorGroupForType:colorGroupForType, ensureColorMap:ensureColorMap,
   QUICK_CATEGORIES:QUICK_CATEGORIES, matchesQuickCategory:matchesQuickCategory,
-  BOTTLE_FIELDS:BOTTLE_FIELDS, RATING_FIELDS:RATING_FIELDS, STATUTS:STATUTS, TYPES_BASE:TYPES_BASE
+  BOTTLE_FIELDS:BOTTLE_FIELDS, RATING_FIELDS:RATING_FIELDS, STATUTS:STATUTS, TYPES_BASE:TYPES_BASE,
+  BIO_OPTIONS:BIO_OPTIONS, bioOption:bioOption, bioBadgeHtml:bioBadgeHtml
 };
 
 })();
@@ -1151,6 +1180,7 @@ var COLS = [
   {k:'MILLESIME',l:'Millésime'},
   {k:'GARDE',l:'Garde'},
   {k:'DEGRES',l:'Degrés'},
+  {k:'DATE_ACHAT',l:'Date d\'achat',min:'110px'},
   {k:'TARIF',l:'Tarif',min:'85px'},
   {k:'ACCORDS',l:'Accords plats',min:'180px'},
   {k:'AVIS',l:'Avis /10'},
@@ -1164,6 +1194,7 @@ function renderDashboard(root){
     '<div class="page-head">'+
       '<div><h1>Tableau de bord</h1><div class="sub">'+b.length+' bouteilles au registre</div></div>'+
       '<div class="page-actions">'+
+        '<button class="btn" id="btn-refresh-bottles" title="Recharger les bouteilles depuis la base">↻ Actualiser</button>'+
         '<button class="btn" id="btn-manage-loc">Gérer les emplacements</button>'+
         '<button class="btn" id="btn-manage-lists">Gérer les référentiels</button>'+
         '<label class="btn" id="btn-import-label" style="position:relative;overflow:hidden;">Importer un Excel'+
@@ -1185,6 +1216,21 @@ function renderDashboard(root){
     '<div class="table-wrap" id="table-wrap"><table class="cellar"><thead id="tbl-head"></thead><tbody id="tbl-body"></tbody></table></div>';
 
   renderStats();
+  document.getElementById('btn-refresh-bottles').onclick=async function(){
+    var btn=document.getElementById('btn-refresh-bottles');
+    btn.disabled=true; btn.textContent='Actualisation…';
+    try{
+      var fresh = await D.sbLoadBottles();
+      if(fresh){ STATE.bottles = fresh; }
+      window.DENFLO_UI.refreshDashboard();
+      D.toast('Données à jour','ok');
+    }catch(e){
+      D.toast('Échec de l\'actualisation : '+(e&&e.message?e.message:e),'error');
+    }finally{
+      var b2=document.getElementById('btn-refresh-bottles');
+      if(b2){ b2.disabled=false; b2.textContent='↻ Actualiser'; }
+    }
+  };
   document.getElementById('btn-manage-loc').onclick=function(){ D.STATE.view='locations'; window.DENFLO_NAV.navigate('locations'); };
   document.getElementById('btn-manage-lists').onclick=function(){ D.STATE.view='lists'; window.DENFLO_NAV.navigate('lists'); };
   document.getElementById('btn-add2').onclick=function(){ window.DENFLO_UI.openBottleForm(null,'create'); };
@@ -1407,10 +1453,16 @@ function renderCell(b,k){
   if(k==='N'){
     return '<span class="n-badge"><span class="pastille" style="background:'+D.pastilleColor(b)+';" title="'+D.escapeHtml(D.pastilleTitle(b))+'"></span>'+ (v!==null&&v!==undefined?v:'—') +'</span>';
   }
+  if(k==='BIO'){
+    var bo=D.bioOption(v);
+    if(!v || v==='NON_BIO') return '';
+    return D.bioBadgeHtml(v,18)+(bo? '' : ' '+D.escapeHtml(v));
+  }
   if(k==='STATUT'){
     var cls = v==='CAVE'?'status-CAVE':v==='BU'?'status-BU':v==='FRIGO'?'status-FRIGO':'status-AVENIR';
     return '<span class="status-chip '+cls+'">'+D.escapeHtml(v||'')+'</span>';
   }
+  if(k==='DATE_ACHAT') return v? D.fmtDate(v) : '';
   if(k==='TARIF') return v!==null&&v!==undefined&&v!==''? '<span style="white-space:nowrap;">'+D.fmtMoney(v)+'</span>':'';
   if(k==='DEGRES') return D.fmtDegres(v);
   if(k==='AVIS'){
@@ -1481,6 +1533,8 @@ async function duplicateBottle(index){
   if(!b) return;
   var copy=JSON.parse(JSON.stringify(b));
   copy.INDEX=D.nextIndex();
+  copy.N=null;
+  copy.EMPLACEMENT=null;
   copy.LOC_ID=null;
   copy.LOC_CODE_LABEL=null;
   STATE.bottles.push(copy);
@@ -1603,9 +1657,9 @@ var currentForm=null; // {index, mode, data, imageDataUri}
 async function openBottleForm(index,mode){
   var data;
   if(index===null){
-    data = { INDEX:null, N:D.nextNForType('VIN'), EMPLACEMENT:null, TYPE:'VIN', DATE_ACHAT:new Date().toISOString().slice(0,10),
+    data = { INDEX:null, N:null, EMPLACEMENT:null, TYPE:'VIN', DATE_ACHAT:new Date().toISOString().slice(0,10),
       SITE_ACHAT:'', TARIF:'', INTITULE:'', PRODUCTEUR:'', COULEUR_TYPE:'', PAYS:'', REGION:'', CEPAGES:'', APPELLATION:'',
-      CLASSEMENT:'', BIO:'', MILLESIME:'', GARDE:'', DEGRES:'', DESCRIPTION:'', ROBE:'', NEZ:'', PALAIS:'', PUISSANT:0,
+      CLASSEMENT:'', BIO:'NON_BIO', MILLESIME:'', GARDE:'', DEGRES:'', DESCRIPTION:'', ROBE:'', NEZ:'', PALAIS:'', PUISSANT:0,
       TANNIQUE:0, EPICE:0, COMPLEXE:0, FRUITE:0, ACIDITE:0, AUTRE:'', ACCORDS:'', AVIS:'', STATUT:'CAVE' };
   } else {
     var b=STATE.bottles.find(function(x){return x.INDEX===index;});
@@ -1652,12 +1706,10 @@ function labelCardHtml(){
     searchLink+
     '<div class="label-n"><span class="pastille" style="background:'+D.pastilleColor(d)+';width:14px;height:14px;"></span> N° '+(d.N!==null&&d.N!==undefined?d.N:'—')+'</div>'+
     '<div class="label-title">'+D.escapeHtml(d.INTITULE||'Sans titre')+'</div>'+
-    '<div class="label-sub">'+D.escapeHtml(d.PRODUCTEUR||'')+(d.MILLESIME?' · '+d.MILLESIME:'')+'</div>'+
+    '<div class="label-sub">'+D.escapeHtml(d.MILLESIME? String(d.MILLESIME):'')+'</div>'+
     '<div class="label-mini-row"><span>Statut</span><span class="status-chip status-'+(d.STATUT==='A VENIR'?'AVENIR':d.STATUT)+'">'+D.escapeHtml(d.STATUT||'')+'</span></div>'+
     '<div class="label-mini-row"><span>Emplacement</span><span>'+D.escapeHtml(d.EMPLACEMENT||'—')+'</span></div>'+
-    '<div class="label-mini-row"><span>Tarif</span><span>'+D.fmtMoney(d.TARIF)+'</span></div>'+
-    '<div class="label-mini-row"><span>Avis</span><span>'+(d.AVIS?d.AVIS+'/10':'—')+'</span></div>'+
-    '<div class="label-mini-row"><span>Index</span><span class="mono faint">'+(d.INDEX!==null?d.INDEX:'—')+'</span></div>'
+    '<div class="label-mini-row"><span>Degrés</span><span>'+(d.DEGRES!==null&&d.DEGRES!==undefined&&d.DEGRES!==''?D.fmtDegres(d.DEGRES):'—')+'</span></div>'
   );
 }
 function photoPlaceholderSvg(){
@@ -1753,7 +1805,7 @@ function bodyHtml(){
     comboFieldOrView('REGION','Région',d.REGION,disabled)+
     comboFieldOrView('APPELLATION','Appellation',d.APPELLATION,disabled)+
     comboFieldOrView('CLASSEMENT','Classement',d.CLASSEMENT,disabled)+
-    comboFieldOrView('BIO','Bio',d.BIO,disabled)+
+    bioFieldOrView(d.BIO,disabled)+
     fieldOrView('GARDE','Garde (jusqu\'à)',d.GARDE,disabled,'number')+
   '</div>'+
   (disabled? viewRow('Cépages / fermentation',d.CEPAGES) :
@@ -1797,6 +1849,12 @@ function bodyHtml(){
 }
 
 function inputField(field,label,value,disabled,type){
+  if(field==='DEGRES'){
+    var dv = (value===null||value===undefined||value==='') ? '' : String(value).replace('.',',');
+    return '<div class="fg"><label>'+label+'</label><input id="fld-DEGRES" type="text" inputmode="decimal" placeholder="ex : 12,5" '+
+      'value="'+D.escapeHtml(dv)+'" '+(disabled?'disabled':'')+' '+
+      'oninput="this.value=this.value.replace(/[^0-9,]/g,\'\').replace(/(,.*),/g,\'$1\');"></div>';
+  }
   return '<div class="fg"><label>'+label+'</label><input id="fld-'+field+'" type="'+type+'" value="'+D.escapeHtml(value===null||value===undefined?'':value)+'" '+(disabled?'disabled':'')+'></div>';
 }
 function fieldOrView(field,label,value,disabled,type){
@@ -1820,6 +1878,24 @@ function selectField(field,label,options,value,disabled){
   return '<div class="fg"><label>'+label+'</label><select id="fld-'+field+'" '+(disabled?'disabled':'')+'>'+
     opts.map(function(o){ return '<option value="'+o+'"'+(o===value?' selected':'')+'>'+o+'</option>'; }).join('')+
   '</select></div>';
+}
+function bioFieldOrView(value, disabled){
+  var v = value || 'NON_BIO';
+  if(disabled){
+    var o=D.bioOption(v);
+    var label = o ? o.label : value;
+    return '<div class="fg"><label>Bio</label><div class="readonly-value" style="display:flex;align-items:center;gap:8px;">'+
+      D.bioBadgeHtml(v,18)+'<span>'+D.escapeHtml(label||'—')+'</span></div></div>';
+  }
+  var known = D.BIO_OPTIONS.some(function(o){return o.value===v;});
+  var opts = D.BIO_OPTIONS.map(function(o){
+    return '<option value="'+o.value+'"'+(o.value===v?' selected':'')+'>'+D.escapeHtml(o.label)+'</option>';
+  }).join('');
+  if(!known && value){ opts += '<option value="'+D.escapeHtml(value)+'" selected>'+D.escapeHtml(value)+' (ancienne valeur)</option>'; }
+  return '<div class="fg"><label>Bio</label><div style="display:flex;align-items:center;gap:8px;">'+
+    '<select id="fld-BIO" style="flex:1;">'+opts+'</select>'+
+    '<span id="bio-badge-preview">'+D.bioBadgeHtml(v,26)+'</span>'+
+  '</div></div>';
 }
 function comboFieldOrView(field,label,value,disabled){
   if(disabled) return viewRow(label,value);
@@ -1845,7 +1921,7 @@ function locationPickerField(d, isCreate){
           D.escapeHtml(l.CODE)+' — '+D.escapeHtml(l.EMPLACEMENT)+(l.ID===d.LOC_ID?' (actuel)':'')+'</option>';
       }).join('')+
     '</select>'+
-    '<div class="combo-add"><input id="fld-EMPLACEMENT-free" placeholder="…ou saisir une zone libre" value="'+D.escapeHtml(currentFree)+'"></div>'+
+    '<div class="combo-add"><input id="fld-EMPLACEMENT-free" data-initial="'+D.escapeHtml(currentFree)+'" placeholder="…ou saisir une zone libre" value="'+D.escapeHtml(currentFree)+'"></div>'+
   '</div>';
   return html;
 }
@@ -1899,7 +1975,7 @@ function refreshLabelPreview(){
   var titleEl=document.querySelector('.label-card .label-title');
   if(titleEl) titleEl.textContent = d.INTITULE || 'Sans titre';
   var subEl=document.querySelector('.label-card .label-sub');
-  if(subEl) subEl.textContent = (d.PRODUCTEUR||'') + (d.MILLESIME? ' · '+d.MILLESIME : '');
+  if(subEl) subEl.textContent = d.MILLESIME || '';
 
   var card=document.querySelector('.label-card');
   if(!card || currentForm.imageDataUri) return;
@@ -1923,9 +1999,17 @@ function refreshLabelPreview(){
   }
 }
 function wireBodyFields(){
-  ['COULEUR_TYPE','PAYS','REGION','APPELLATION','CLASSEMENT','BIO'].forEach(wireCombo);
+  ['COULEUR_TYPE','PAYS','REGION','APPELLATION','CLASSEMENT'].forEach(wireCombo);
   wireZoneCombo();
   D.RATING_FIELDS.forEach(wireRating);
+
+  var bioSel=document.getElementById('fld-BIO');
+  if(bioSel){
+    bioSel.onchange=function(){
+      var preview=document.getElementById('bio-badge-preview');
+      if(preview) preview.innerHTML=D.bioBadgeHtml(bioSel.value,26);
+    };
+  }
 
   ['fld-INTITULE','fld-PRODUCTEUR','fld-MILLESIME'].forEach(function(id){
     var el=document.getElementById(id);
@@ -1979,7 +2063,9 @@ function readFieldsFromDom(target){
     var el=document.getElementById('fld-'+f);
     if(!el) return;
     var v=el.value;
-    if(map[f]==='number'){ target[f]= v===''? '' : parseFloat(v); }
+    if(f==='DEGRES'){
+      target[f] = v==='' ? '' : parseFloat(String(v).replace(',','.'));
+    } else if(map[f]==='number'){ target[f]= v===''? '' : parseFloat(v); }
     else{ target[f]=v; }
   });
   D.RATING_FIELDS.forEach(function(f){
@@ -2046,6 +2132,11 @@ async function saveForm(){
     } else {
       var codeSel2=document.getElementById('fld-EMPLACEMENT_CODE');
       var chosenId2 = codeSel2 && codeSel2.value ? parseInt(codeSel2.value,10) : null;
+      var freeEl2=document.getElementById('fld-EMPLACEMENT-free');
+      var freeVal2 = freeEl2 ? freeEl2.value.trim() : null;
+      var freeInitial2 = freeEl2 ? (freeEl2.getAttribute('data-initial')||'') : null;
+      var freeTextChanged = (freeEl2 !== null) && (freeVal2 !== freeInitial2);
+
       if(chosenId2 !== oldId){
         if(oldId){
           STATE.locations.push({ID:oldId, CODE:existing.LOC_CODE_LABEL, EMPLACEMENT:existing.EMPLACEMENT, STATUT_EMP:'VIDE'});
@@ -2063,21 +2154,17 @@ async function saveForm(){
         } else {
           d.LOC_ID=null;
           d.LOC_CODE_LABEL=null;
-          var freeInput2=document.getElementById('fld-EMPLACEMENT-free');
-          d.EMPLACEMENT = freeInput2 ? freeInput2.value.trim() : (existing.EMPLACEMENT||'');
+          d.EMPLACEMENT = freeEl2 ? freeVal2 : (existing.EMPLACEMENT||'');
         }
+      } else if(!chosenId2 && freeTextChanged){
+        // Pas de code précis choisi, mais le texte libre a vraiment été modifié par l'utilisateur
+        d.LOC_ID=null;
+        d.LOC_CODE_LABEL=null;
+        d.EMPLACEMENT=freeVal2;
       } else {
-        // sélection inchangée
-        if(chosenId2){
-          d.LOC_ID=existing.LOC_ID;
-          d.LOC_CODE_LABEL=existing.LOC_CODE_LABEL;
-          d.EMPLACEMENT=existing.EMPLACEMENT;
-        } else {
-          d.LOC_ID=null;
-          d.LOC_CODE_LABEL=null;
-          var freeInput3=document.getElementById('fld-EMPLACEMENT-free');
-          d.EMPLACEMENT = freeInput3 ? freeInput3.value.trim() : (existing.EMPLACEMENT||'');
-        }
+        // Rien n'a été touché (ni le menu déroulant, ni le texte libre) : on ne modifie rien,
+        // quelle que soit la cause (ex. changement de photo). Les valeurs existantes sont conservées.
+        delete d.LOC_ID; delete d.LOC_CODE_LABEL; delete d.EMPLACEMENT;
       }
     }
 
@@ -2223,7 +2310,7 @@ async function applyAiResult(r){
     if(!already && r[f]!==undefined && r[f]!==null){ d[f]=parseInt(r[f],10)||0; }
   });
   // ensure new list values exist
-  ['COULEUR_TYPE','PAYS','REGION','APPELLATION','CLASSEMENT','BIO'].forEach(function(f){
+  ['COULEUR_TYPE','PAYS','REGION','APPELLATION','CLASSEMENT'].forEach(function(f){
     if(d[f] && STATE.lists[f] && STATE.lists[f].indexOf(d[f])===-1){
       STATE.lists[f].push(d[f]);
       if(f==='COULEUR_TYPE'){
@@ -2354,7 +2441,7 @@ async function handleImport(file){
       if(!rec.STATUT) rec.STATUT='CAVE';
       STATE.bottles.push(rec);
       added++;
-      ['TYPE','COULEUR_TYPE','PAYS','REGION','APPELLATION','CLASSEMENT','BIO'].forEach(function(f){
+      ['TYPE','COULEUR_TYPE','PAYS','REGION','APPELLATION','CLASSEMENT'].forEach(function(f){
         if(rec[f] && STATE.lists[f] && STATE.lists[f].indexOf(String(rec[f]))===-1){
           STATE.lists[f].push(String(rec[f]));
           if(f==='COULEUR_TYPE'){
@@ -2446,7 +2533,7 @@ function renderLocations(root){
       '</select></div>'+
       '<button class="btn btn-ghost btn-sm filter-reset" id="loc-reset">Réinitialiser</button>'+
     '</div>'+
-    '<div class="table-wrap"><table class="cellar"><thead id="loc-head"></thead><tbody id="loc-body"></tbody></table></div>';
+    '<div class="table-wrap"><table class="cellar loc-table"><thead id="loc-head"></thead><tbody id="loc-body"></tbody></table></div>';
 
   document.getElementById('btn-add-loc').onclick=function(){ openLocForm(null); };
   document.getElementById('loc-filter').onchange=function(e){ STATE.locFilter=e.target.value; renderLocTable(); };
