@@ -1694,7 +1694,7 @@ function labelCardHtml(){
   var d=currentForm.data, mode=currentForm.mode;
   var img=currentForm.imageDataUri;
   var searchQuery = [d.INTITULE, d.PRODUCTEUR, d.MILLESIME].filter(Boolean).join(' ');
-  var searchLink = (mode!=='view' && !img && searchQuery.trim())
+  var searchLink = (mode!=='view' && searchQuery.trim())
     ? '<div class="ai-image-suggest" id="photo-search-suggest"><a href="https://www.google.com/search?tbm=isch&q='+encodeURIComponent(searchQuery)+'" target="_blank" rel="noopener">🔎 Chercher une photo sur Google Images</a>'+
       '<div class="hint">Ouvrez le lien, trouvez la photo de l\'étiquette, enregistrez-la sur votre appareil, puis importez-la avec le bouton ci-dessus.</div></div>'
     : '';
@@ -1979,7 +1979,7 @@ function refreshLabelPreview(){
   if(subEl) subEl.textContent = d.MILLESIME || '';
 
   var card=document.querySelector('.label-card');
-  if(!card || currentForm.imageDataUri) return;
+  if(!card) return;
   var query=[d.INTITULE, d.PRODUCTEUR, d.MILLESIME].filter(Boolean).join(' ').trim();
   var suggest=card.querySelector('#photo-search-suggest');
   if(query){
