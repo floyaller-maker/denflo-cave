@@ -1849,9 +1849,10 @@ function bodyHtml(){
 }
 
 function inputField(field,label,value,disabled,type){
-  if(field==='DEGRES'){
+  if(field==='DEGRES' || field==='TARIF'){
     var dv = (value===null||value===undefined||value==='') ? '' : String(value).replace('.',',');
-    return '<div class="fg"><label>'+label+'</label><input id="fld-DEGRES" type="text" inputmode="decimal" placeholder="ex : 12,5" '+
+    var ph = field==='DEGRES' ? 'ex : 12,5' : 'ex : 15,90';
+    return '<div class="fg"><label>'+label+'</label><input id="fld-'+field+'" type="text" inputmode="decimal" placeholder="'+ph+'" '+
       'value="'+D.escapeHtml(dv)+'" '+(disabled?'disabled':'')+' '+
       'oninput="this.value=this.value.replace(/[^0-9,]/g,\'\').replace(/(,.*),/g,\'$1\');"></div>';
   }
@@ -1860,7 +1861,7 @@ function inputField(field,label,value,disabled,type){
 function fieldOrView(field,label,value,disabled,type){
   if(disabled){
     var display=value;
-    if(field==='TARIF' && value!=='' && value!==null && value!==undefined) display=value+' €';
+    if(field==='TARIF' && value!=='' && value!==null && value!==undefined) display=D.fmtMoney(value);
     if(field==='DEGRES') display=D.fmtDegres(value);
     return viewRow(label,display);
   }
@@ -2063,7 +2064,7 @@ function readFieldsFromDom(target){
     var el=document.getElementById('fld-'+f);
     if(!el) return;
     var v=el.value;
-    if(f==='DEGRES'){
+    if(f==='DEGRES' || f==='TARIF'){
       target[f] = v==='' ? '' : parseFloat(String(v).replace(',','.'));
     } else if(map[f]==='number'){ target[f]= v===''? '' : parseFloat(v); }
     else{ target[f]=v; }
